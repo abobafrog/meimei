@@ -1,4 +1,5 @@
 (() => {
+  document.documentElement.classList.add("js");
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   const canvas = document.getElementById("snow");
   const toggle = document.getElementById("snow-toggle");
@@ -25,6 +26,7 @@
   }
 
   function resize() {
+    if (!context) return;
     width = window.innerWidth;
     height = window.innerHeight;
     pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -75,7 +77,7 @@
   motionQuery.addEventListener("change", (event) => setPaused(event.matches));
   window.addEventListener("resize", resize, { passive: true });
   resize();
-  if (!paused) frame = window.requestAnimationFrame(animate);
+  setPaused(paused);
 
   const portrait = document.getElementById("portrait-frame");
   const canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -135,7 +137,8 @@
   nickname.addEventListener("input", () => {
     updateCounter(nickname, nicknameCount);
     nickname.classList.remove("invalid");
-    nicknameError.textContent = "";
+    nicknameError.textContent = forbidden.test(nickname.value) ? "Ссылки и изображения нельзя использовать в нике." : "";
+    if (nicknameError.textContent) nickname.classList.add("invalid");
     formResult.textContent = "";
   });
   message.addEventListener("input", () => {
@@ -154,6 +157,7 @@
     nicknameError.textContent = "";
     if (!name) nicknameError.textContent = "Добавь ник, чтобы я знал, кого благодарить.";
     if (name.length > 24) nicknameError.textContent = "Ник должен быть короче 24 символов.";
+    if (name && forbidden.test(name)) nicknameError.textContent = "Ссылки и изображения нельзя использовать в нике.";
     if (nicknameError.textContent) nickname.classList.add("invalid");
     const messageIsValid = validateMessage();
     if (nicknameError.textContent || !messageIsValid) {
