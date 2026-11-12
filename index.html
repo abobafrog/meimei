@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1423" />
+    <meta name="description" content="Тихий зимний уголок Тимы: немного обо мне, Мей-Мей и гостевая книга." />
+    <title>Тима — следы на снегу</title>
+    <script>document.documentElement.classList.add('js');</script>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">К содержанию</a>
+    <canvas class="snow" id="snow" aria-hidden="true"></canvas>
+    <div class="page-glow" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#home" aria-label="Тима — на главную">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M16 3v26M4.75 9.5l22.5 13M4.75 22.5l22.5-13M12.5 5l3.5 4 3.5-4M12.5 27l3.5-4 3.5 4M5.5 13l5.5-.5-.5-5.5M26.5 19l-5.5.5.5 5.5M5.5 19l5.5.5-.5 5.5M26.5 13l-5.5-.5.5-5.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </span>
+        <span class="brand-name">тима<span class="brand-period">.</span></span>
+      </a>
+
+      <nav class="main-nav" aria-label="Основная навигация">
+        <a href="#about">Обо мне</a>
+        <a href="#guestbook">Следы на снегу</a>
+      </nav>
+
+      <a class="header-note" href="#guestbook"><span class="status-dot" aria-hidden="true"></span>Оставить записку</a>
+    </header>
+
+    <main id="main">
+      <section class="hero section-wrap" id="home" aria-labelledby="hero-title">
+        <div class="hero-copy reveal">
+          <p class="eyebrow"><span class="eyebrow-line"></span>Тихий уголок в сети <span class="eyebrow-year">· 2026</span></p>
+          <h1 id="hero-title">Привет,<br />я <span class="title-accent">Тима</span><span class="title-comma">.</span></h1>
+          <p class="hero-lede">Здесь можно немного замедлиться.<br class="desktop-break" /> Вдохнуть морозный воздух и остаться на пару минут.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#about">Заглянуть внутрь <span aria-hidden="true">↘</span></a>
+            <a class="text-link" href="#guestbook">Оставить след <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="hero-footnote"><span class="tiny-star" aria-hidden="true">✳</span><span>Снаружи холодно.<br /><strong>Здесь тебе рады.</strong></span></div>
+        </div>
+
+        <div class="hero-visual reveal" aria-label="Мей-Мей">
+          <div class="orbit orbit-one" aria-hidden="true"></div>
+          <div class="orbit orbit-two" aria-hidden="true"></div>
+          <span class="visual-index" aria-hidden="true">ПУШИСТОЕ ПРИВЕТСТВИЕ <span>01 — 03</span></span>
+          <figure class="portrait-float">
+            <div class="portrait-frame" id="portrait-frame">
+              <img class="portrait-photo" src="mei-mei.jpg" alt="Снежный барс Мей-Мей протягивает лапу" width="960" height="1280" />
+              <span class="photo-stamp" aria-hidden="true">мей<br />мей</span>
+            </div>
+            <figcaption class="portrait-caption">
+              <span class="caption-icon" aria-hidden="true">✳</span>
+              <span><strong>Мей-Мей</strong><small>Хранительница этого места</small></span>
+              <span class="caption-sparkle" aria-hidden="true">✦</span>
+            </figcaption>
+          </figure>
+          <span class="visual-side-note" aria-hidden="true">ТИШЕ · ТЕПЛЕЕ · БЛИЖЕ</span>
+        </div>
+        <a class="scroll-cue" href="#about" aria-label="Прокрутить к разделу «Обо мне»"><span class="scroll-cue-line"></span><span>ЛИСТАЙ НЕ СПЕША</span></a>
+      </section>
+
+      <section class="about section-wrap" id="about" aria-labelledby="about-title">
+        <div class="section-topline"><span>01 <i>—</i> ОТКРЫТКА</span><span class="section-topline-right">НЕСКОЛЬКО СЛОВ О ТОМ, ЧТО РЯДОМ</span></div>
+        <div class="about-grid">
+          <div class="section-title-block reveal">
+            <p class="eyebrow"><span class="eyebrow-line"></span>Обо мне</p>
+            <h2 id="about-title">Приятно<br />познакомиться<span class="title-comma">.</span></h2>
+            <div class="title-flake" aria-hidden="true">✳</div>
+          </div>
+          <div class="about-story reveal">
+            <p class="story-lead">Я Тима. Мне по душе вещи, которые помогают выдохнуть: снежные вечера, негромкая музыка и разговоры без спешки.</p>
+            <p>Этот сайт — маленькая пауза среди обычного дня. Здесь живёт Мей-Мей, собираются добрые слова и остаётся немного места для тишины.</p>
+            <div class="interest-list" aria-label="Мои маленькие радости">
+              <div class="interest-item"><span class="interest-number">01</span><span>Хрустящий снег<br /><small>и длинные прогулки</small></span><span class="interest-icon" aria-hidden="true">❄</span></div>
+              <div class="interest-item"><span class="interest-number">02</span><span>Тихие вечера<br /><small>с тёплым светом</small></span><span class="interest-icon" aria-hidden="true">☾</span></div>
+              <div class="interest-item"><span class="interest-number">03</span><span>Новые истории<br /><small>и добрые люди</small></span><span class="interest-icon" aria-hidden="true">✳</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="breath-note reveal"><span class="breath-symbol" aria-hidden="true">“</span><p>Тишина тоже умеет говорить.</p><span class="breath-rule" aria-hidden="true"></span><span class="breath-label">ЗИМНЯЯ ЗАМЕТКА № 01</span></div>
+      </section>
+
+      <section class="guestbook section-wrap" id="guestbook" aria-labelledby="guestbook-title">
+        <div class="section-topline"><span>02 <i>—</i> ГОСТЕВАЯ КНИГА</span><span class="section-topline-right">ПУСТЬ ОСТАНЕТСЯ ТЁПЛЫЙ СЛЕД</span></div>
+        <div class="guestbook-heading reveal">
+          <div>
+            <p class="eyebrow"><span class="eyebrow-line"></span>Следы на снегу</p>
+            <h2 id="guestbook-title">Оставь пару<br />добрых слов<span class="title-comma">.</span></h2>
+          </div>
+          <p class="guestbook-intro">Напиши что-нибудь от души — пусть это будет маленькая записка, которую приятно найти в зимнем кармане.</p>
+        </div>
+
+        <div class="guestbook-layout">
+          <div class="guestbook-empty reveal">
+            <div class="empty-snowflake" aria-hidden="true">✳</div>
+            <span class="empty-overline">ПОКА ЗДЕСЬ ТИХО</span>
+            <h3>Снег ещё чистый</h3>
+            <p>Первая записка появится здесь после подключения отправки и моего одобрения.</p>
+            <div class="empty-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+          </div>
+
+          <form class="note-form reveal" id="note-form" novalidate>
+            <div class="form-heading"><span class="form-heading-icon" aria-hidden="true">✳</span><div><strong>Твоя записка</strong><span>Коротко — тоже тепло</span></div></div>
+            <label class="field-label" for="nickname">Как тебя называть?</label>
+            <div class="input-wrap">
+              <input id="nickname" name="nickname" type="text" maxlength="24" autocomplete="nickname" placeholder="Например, Снежинка" aria-describedby="nickname-count nickname-error" />
+              <span class="counter" id="nickname-count">0 <i>/</i> 24</span>
+            </div>
+            <p class="field-error" id="nickname-error" aria-live="polite"></p>
+
+            <label class="field-label message-label" for="message">Тёплые слова</label>
+            <div class="input-wrap textarea-wrap">
+              <textarea id="message" name="message" rows="4" maxlength="120" placeholder="Пусть в этом уголке останется немного тепла..." aria-describedby="message-help message-count message-error"></textarea>
+              <span class="counter" id="message-count">0 <i>/</i> 120</span>
+            </div>
+            <div class="field-meta"><span id="message-help">Без ссылок и картинок, пожалуйста.</span><span class="field-error" id="message-error" aria-live="polite"></span></div>
+
+            <div class="moderation-notice" role="note"><span class="notice-lock" aria-hidden="true">◇</span><span><strong>Записки публикуются после моего одобрения.</strong><small>Сейчас форма не подключена к серверу. Текст не отправляется и не сохраняется.</small></span></div>
+            <button class="button button-submit" type="submit">Проверить сообщение <span aria-hidden="true">↗</span></button>
+            <p class="form-result" id="form-result" aria-live="polite"></p>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer section-wrap">
+      <a class="footer-brand" href="#home">тима<span>.</span></a>
+      <p>Пусть дорога домой будет светлой.</p>
+      <div class="footer-right"><span>СОБРАНО С ТЕПЛОМ</span><a href="#home" aria-label="Вернуться наверх">↑</a></div>
+    </footer>
+
+    <button class="snow-toggle" id="snow-toggle" type="button" aria-label="Приостановить снег" aria-pressed="false"><span class="toggle-flake" aria-hidden="true">✳</span><span class="toggle-copy">Снег идёт</span><span class="toggle-indicator" aria-hidden="true"></span></button>
+  </body>
+</html>
