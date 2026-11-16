@@ -1,0 +1,12 @@
+{
+  "version": "marqo-nsfw-vit-tiny-384-int8",
+  "source": "https://huggingface.co/Marqo/nsfw-image-detection-384",
+  "onnx_export": "https://huggingface.co/kasimtmc/nsfw-image-detection-384-onnx",
+  "license": "Apache-2.0",
+  "drawing_input": "pixel_values",
+  "drawing_size": 384,
+  "drawing_normalize": "minus_one_to_one",
+  "drawing_reject_index": 0,
+  "labels": ["nsfw", "sfw"],
+  "decision": "assist_review_only"
+}

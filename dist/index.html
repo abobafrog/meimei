@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#0b1423" />
     <meta name="description" content="Тихий зимний уголок Тимы: немного обо мне, Мей-Мей и гостевая книга." />
     <title>Frokla</title>
-    <link rel="stylesheet" href="styles.css" /><link rel="stylesheet" href="CircularGallery.css" /><link rel="stylesheet" href="PixelSnow.css" /><link rel="stylesheet" href="MiniApps.css" />
-    <script src="local.js" defer></script><script src="PixelSnow.js" defer></script><script src="MeiPixelScene.js" defer></script><script src="HolidayCountdown.js" defer></script><script src="SnowVacuum.js" defer></script><script src="script.js" defer></script><script src="MiniApps.js" defer></script>
-    <script src="canvas.js?v=unlimited-ink-20261116" defer></script><script src="InkPalette.js" defer></script><script src="CircularGallery.js" defer></script><script src="tree.js" defer></script><script src="tree-spin.js" defer></script><script src="mei.js" defer></script><script src="nickname.js" defer></script><script src="VerityVisit.js" defer></script>
+    <link rel="stylesheet" href="styles.css?v=mei-services-20261116" /><link rel="stylesheet" href="CircularGallery.css" /><link rel="stylesheet" href="PixelSnow.css" /><link rel="stylesheet" href="MiniApps.css?v=mei-market-20261116" />
+    <script src="local.js" defer></script><script src="PixelSnow.js" defer></script><script src="MeiPixelScene.js" defer></script><script src="HolidayCountdown.js" defer></script><script src="SnowVacuum.js" defer></script><script src="script.js" defer></script><script src="MiniApps.js?v=mei-market-20261116" defer></script>
+    <script src="canvas.js?v=eraser-space-20261116" defer></script><script src="InkPalette.js" defer></script><script src="CircularGallery.js" defer></script><script src="tree.js" defer></script><script src="tree-spin.js" defer></script><script src="mei.js" defer></script><script src="nickname.js" defer></script><script src="VerityVisit.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">К содержанию</a>
@@ -23,11 +23,12 @@
         <span class="brand-name">Frokla</span>
       </a>
       <details class="mini-service-menu" id="mini-service-menu">
-        <summary><span aria-hidden="true">✧</span> Мини-сервисы <b>15</b></summary>
+        <summary><span aria-hidden="true">✧</span> Мини-сервисы <b>19</b></summary>
         <div class="mini-service-panel"><div class="mini-service-heading"><strong>Мини-сервисы</strong><span>Инструменты и игры в одном месте</span></div><div class="mini-service-grid">
           <button type="button" data-mini-app="assistant"><span>✦</span> ИИ-помощник</button><button type="button" data-mini-app="lamp"><span>☼</span> Фонарик</button><button type="button" data-mini-app="habits"><span>✓</span> Трекер привычек</button><button type="button" data-mini-app="telegram"><span>➤</span> Telegram-бот</button><button type="button" data-mini-app="snowcatch"><span>❄</span> Поймай снежинку</button>
           <button type="button" data-mini-app="focus"><span>◷</span> Фокус-таймер</button><button type="button" data-mini-app="checklist"><span>☷</span> Список дел</button><button type="button" data-mini-app="mood"><span>☻</span> Дневник настроения</button><button type="button" data-mini-app="countdown"><span>⌛</span> До Нового года</button><button type="button" data-mini-app="password"><span>⌑</span> Генератор паролей</button>
           <button type="button" data-mini-app="calculator"><span>＋</span> Калькулятор</button><button type="button" data-mini-app="texttools"><span>Aa</span> Инструменты текста</button><button type="button" data-mini-app="converter"><span>↔</span> Конвертер величин</button><button type="button" data-mini-app="notes"><span>▤</span> Быстрые заметки</button><button type="button" data-mini-app="budget"><span>₽</span> Учёт расходов</button>
+          <button type="button" data-mini-app="casino"><span>🍎</span> Мей-Мей казино</button><button type="button" data-mini-app="stream"><span>▶</span> Стрим-симулятор</button><button type="button" data-mini-app="mei-clicker"><span>🐆</span> Мей-Мей кликер</button><button type="button" data-mini-app="mei-market"><span>📈</span> Акции Мей-Мей</button>
         </div></div>
       </details>
     </header>
@@ -53,6 +54,7 @@
             </div>
             
           </figure>
+          <a class="new-services-badge" href="#mini-service-menu"><span class="new-services-badge-icon" aria-hidden="true">✦</span><span><strong>Добавлены новые сервисы!</strong><small>Открой меню и выбирай новинку</small></span><span class="new-services-badge-arrow" aria-hidden="true">↗</span></a>
           <span class="visual-side-note" aria-hidden="true">ТИШЕ · ТЕПЛЕЕ · БЛИЖЕ</span>
         </div>
         
@@ -97,7 +99,7 @@
         <p class="eyebrow">ОБЩИЙ ХОЛСТ</p>
         <h2 id="drawing-title">Холст</h2>
         <p>Рисунки сразу появляются на общем холсте.</p>
-        <p class="drawing-policy">Без оскорблений, угроз, личных данных и запрещённого контента.</p><div class="drawing-tools"><label>Цвет <input id="ink" type="color" value="#a9d9ff"></label><label><span id="brush-label">Кисть</span> <input id="brush" type="range" min="2" max="28" value="5"></label><button id="canvas-pan" type="button" aria-pressed="false">Режим: рисование</button><button id="canvas-eraser" type="button" aria-pressed="false" disabled>Ластик своих рисунков</button><button id="fullscreen-art" type="button">На весь экран ↗</button></div>
+        <p class="drawing-policy">Без оскорблений, угроз, личных данных и запрещённого контента.</p><div class="drawing-tools"><label>Цвет <input id="ink" type="color" value="#a9d9ff"></label><label><span id="brush-label">Кисть</span> <input id="brush" type="range" min="2" max="28" value="5"></label><button id="canvas-pan" type="button" aria-pressed="false">Режим: рисование</button><button id="canvas-scroll-page" type="button" aria-pressed="false">Прокрутка страницы</button><button id="canvas-eraser" type="button" aria-pressed="false">Ластик своих рисунков</button><button id="canvas-find-space" type="button">Найти свободное место</button><button id="fullscreen-art" type="button">На весь экран ↗</button></div>
         <div class="canvas-viewport"><canvas id="drawing-board" width="4800" height="2800" aria-label="Общий холст. Рисуйте мышью или пальцем."></canvas></div>
         <p id="drawing-status" role="status">Подключаемся к общему холсту…</p>
       </section>

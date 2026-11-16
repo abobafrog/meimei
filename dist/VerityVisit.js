@@ -21,26 +21,27 @@
       rootOverflow: root.style.overflow,
       rootOverscroll: root.style.overscrollBehavior,
       body: {
-        position: body.style.position,
-        top: body.style.top,
-        left: body.style.left,
-        right: body.style.right,
-        width: body.style.width,
         overflow: body.style.overflow,
-        paddingRight: body.style.paddingRight,
+        overscrollBehavior: body.style.overscrollBehavior,
       },
     };
-    const scrollbarWidth = Math.max(0, window.innerWidth - root.clientWidth);
-    const currentPadding = parseFloat(getComputedStyle(body).paddingRight) || 0;
     root.style.overflow = 'hidden';
     root.style.overscrollBehavior = 'none';
-    body.style.position = 'fixed';
-    body.style.top = `-${savedScroll.y}px`;
-    body.style.left = '0';
-    body.style.right = '0';
-    body.style.width = 'auto';
     body.style.overflow = 'hidden';
-    if (scrollbarWidth) body.style.paddingRight = `${currentPadding + scrollbarWidth}px`;
+    body.style.overscrollBehavior = 'none';
+    window.addEventListener('touchmove', preventPageScroll, { passive: false, capture: true });
+    window.addEventListener('wheel', preventPageScroll, { passive: false, capture: true });
+    window.addEventListener('keydown', preventScrollKeys, true);
+  }
+
+  function preventPageScroll(event) {
+    if (event.cancelable) event.preventDefault();
+  }
+
+  function preventScrollKeys(event) {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      event.preventDefault();
+    }
   }
 
   function unlockPageScroll() {
@@ -48,11 +49,16 @@
     const saved = savedScroll;
     const body = document.body;
     const root = document.documentElement;
+    window.removeEventListener('touchmove', preventPageScroll, true);
+    window.removeEventListener('wheel', preventPageScroll, true);
+    window.removeEventListener('keydown', preventScrollKeys, true);
     root.style.overflow = saved.rootOverflow;
     root.style.overscrollBehavior = saved.rootOverscroll;
     for (const [property, value] of Object.entries(saved.body)) body.style[property] = value;
     savedScroll = null;
-    window.scrollTo(saved.x, saved.y);
+    if (Math.abs(window.scrollX - saved.x) > 2 || Math.abs(window.scrollY - saved.y) > 2) {
+      window.scrollTo(saved.x, saved.y);
+    }
   }
 
   const actor = document.createElement('div');

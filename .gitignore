@@ -14,5 +14,11 @@ drawing-review.html
 /target/
 /backups/
 /models/
-/local_ai/models/
+/local_ai/models/*
+!/local_ai/models/base-nsfw-384/
+/local_ai/models/base-nsfw-384/*
+!/local_ai/models/base-nsfw-384/drawing.onnx
+!/local_ai/models/base-nsfw-384/model.json
+!/local_ai/models/base-nsfw-384/LICENSE-Apache-2.0.txt
+/local_ai/dataset/
 /local_ai/export-*.jsonl

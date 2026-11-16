@@ -86,6 +86,20 @@ pub fn initialize(path: &Path) -> Result<()> {
             auto_details TEXT NOT NULL DEFAULT '{}',
             approved INTEGER NOT NULL DEFAULT 0
          );
+         CREATE TABLE IF NOT EXISTS drawings (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            visitor TEXT,
+            created INTEGER NOT NULL,
+            updated INTEGER NOT NULL,
+            revision INTEGER NOT NULL DEFAULT 0,
+            moderation_reviewed INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE TABLE IF NOT EXISTS visitor_profiles (
+            visitor TEXT PRIMARY KEY,
+            first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS quota_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS quotas (peer TEXT PRIMARY KEY,notes INTEGER NOT NULL DEFAULT 0,ink REAL NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS visits (
@@ -112,6 +126,24 @@ pub fn initialize(path: &Path) -> Result<()> {
          CREATE TABLE IF NOT EXISTS geo_cache (peer TEXT PRIMARY KEY,payload TEXT,expires INTEGER);
          CREATE TABLE IF NOT EXISTS geo_requests (day TEXT PRIMARY KEY,total INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS visitor_interests (visitor TEXT PRIMARY KEY,interests TEXT NOT NULL,updated INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS mei_market_state (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            price INTEGER NOT NULL CHECK(price>=1),
+            updated INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE TABLE IF NOT EXISTS mei_market_users (
+            actor TEXT PRIMARY KEY,
+            last_action INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS mei_market_ticks (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            price INTEGER NOT NULL,
+            change INTEGER NOT NULL,
+            side TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            created INTEGER NOT NULL
+         );
+         INSERT OR IGNORE INTO mei_market_state(id,price,updated) VALUES(1,1000,0);
          CREATE TABLE IF NOT EXISTS ai_reviews (
             kind TEXT NOT NULL,
             item_id INTEGER NOT NULL,
@@ -132,7 +164,6 @@ pub fn initialize(path: &Path) -> Result<()> {
             UNIQUE(kind,item_id)
          );
          INSERT OR IGNORE INTO quota_settings(key,value) VALUES('secret', lower(hex(randomblob(32))));
-         PRAGMA user_version=1;
          COMMIT;",
     )?;
 
@@ -156,6 +187,19 @@ pub fn initialize(path: &Path) -> Result<()> {
         "TEXT NOT NULL DEFAULT '{}'",
     )?;
     ensure_column(&connection, "strokes", "segments", "TEXT")?;
+    ensure_column(&connection, "strokes", "drawing_id", "TEXT")?;
+    ensure_column(
+        &connection,
+        "drawings",
+        "revision",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        &connection,
+        "strokes",
+        "moderation_reviewed",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     ensure_column(&connection, "strokes", "quota_peer", "TEXT")?;
     ensure_column(
         &connection,
@@ -185,6 +229,8 @@ pub fn initialize(path: &Path) -> Result<()> {
     connection.execute_batch(
         "CREATE INDEX IF NOT EXISTS notes_public_idx ON notes(approved,featured,seq);
          CREATE INDEX IF NOT EXISTS strokes_public_idx ON strokes(approved,seq);
+         CREATE INDEX IF NOT EXISTS strokes_drawing_idx ON strokes(drawing_id,seq);
+         CREATE INDEX IF NOT EXISTS drawings_updated_idx ON drawings(updated DESC);
          CREATE INDEX IF NOT EXISTS visits_time_idx ON visits(created);
          CREATE INDEX IF NOT EXISTS visits_geo_idx ON visits(peer,geo_status);
          CREATE INDEX IF NOT EXISTS submissions_owner_idx ON submissions(kind,visitor,item);
@@ -194,12 +240,52 @@ pub fn initialize(path: &Path) -> Result<()> {
         "UPDATE ai_queue SET state='queued',started=NULL WHERE state='running'",
         [],
     )?;
+    // Preserve every existing stroke and approval decision. Older strokes get
+    // a stable legacy group based on their pseudonymous browser and 15-minute
+    // activity window; rows without an owner remain individually addressable.
     connection.execute(
-        "UPDATE strokes SET approved=1,auto_status='not_required',auto_details='{}' WHERE approved=0",
+        "UPDATE strokes SET drawing_id=(
+             SELECT 'legacy-' || owner.visitor || '-' || CAST(owner.created / 900 AS TEXT)
+             FROM submissions owner
+             WHERE owner.kind='strokes' AND owner.item=CAST(strokes.seq AS TEXT)
+             ORDER BY owner.created LIMIT 1
+         ) WHERE drawing_id IS NULL AND EXISTS (
+             SELECT 1 FROM submissions owner
+             WHERE owner.kind='strokes' AND owner.item=CAST(strokes.seq AS TEXT)
+         )",
         [],
     )?;
-    connection.execute("DELETE FROM ai_queue WHERE kind='strokes'", [])?;
-    connection.execute("PRAGMA user_version=1", [])?;
+    connection.execute(
+        "UPDATE strokes SET drawing_id='legacy-stroke-' || CAST(seq AS TEXT) WHERE drawing_id IS NULL",
+        [],
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO drawings(id,visitor,created,updated,moderation_reviewed)
+         SELECT s.drawing_id,MIN(owner.visitor),
+                MIN(COALESCE(owner.created,0)),MAX(COALESCE(owner.created,0)),0
+         FROM strokes s
+         LEFT JOIN submissions owner
+           ON owner.kind='strokes' AND owner.item=CAST(s.seq AS TEXT)
+         WHERE s.drawing_id IS NOT NULL
+         GROUP BY s.drawing_id",
+        [],
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO visitor_profiles(visitor,first_seen,last_seen)
+         SELECT visitor,MIN(COALESCE(created,0)),MAX(COALESCE(created,0)) FROM visits
+         WHERE visitor IS NOT NULL AND visitor<>'' GROUP BY visitor",
+        [],
+    )?;
+    connection.execute(
+        "INSERT INTO visitor_profiles(visitor,first_seen,last_seen)
+         SELECT visitor,MIN(COALESCE(created,0)),MAX(COALESCE(created,0)) FROM submissions
+         WHERE visitor IS NOT NULL AND visitor<>'' GROUP BY visitor
+         ON CONFLICT(visitor) DO UPDATE SET
+           first_seen=MIN(visitor_profiles.first_seen,excluded.first_seen),
+           last_seen=MAX(visitor_profiles.last_seen,excluded.last_seen)",
+        [],
+    )?;
+    connection.execute("PRAGMA user_version=2", [])?;
 
     #[cfg(unix)]
     {

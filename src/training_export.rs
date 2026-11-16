@@ -42,21 +42,42 @@ pub fn export(connection: &Connection, destination: &Path) -> Result<(usize, usi
     }
     {
         let mut statement = connection.prepare(
-            "SELECT points,width,color,approved FROM strokes WHERE approved IN (-1,1) ORDER BY seq",
+            "SELECT d.id,MIN(s.approved),MAX(s.approved)
+             FROM drawings d JOIN strokes s ON s.drawing_id=d.id
+             WHERE d.moderation_reviewed=1
+             GROUP BY d.id
+             HAVING MIN(s.approved)=MAX(s.approved) AND MIN(s.approved) IN (-1,1)
+             ORDER BY d.seq",
         )?;
-        for row in statement.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, f64>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        })? {
-            let (points, width, color, approved) = row?;
-            let parsed: serde_json::Value = serde_json::from_str(&points)?;
+        let drawings = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (drawing_id, approved) in drawings {
+            let mut strokes = connection.prepare(
+                "SELECT points,segments,width,color FROM strokes
+                 WHERE drawing_id=? ORDER BY seq",
+            )?;
+            let mut samples = Vec::new();
+            for row in strokes.query_map([&drawing_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, f64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })? {
+                let (points, segments, width, color) = row?;
+                let points: serde_json::Value = serde_json::from_str(&points)?;
+                let segments: Option<serde_json::Value> =
+                    segments.map(|raw| serde_json::from_str(&raw)).transpose()?;
+                samples
+                    .push(json!({"points":points,"segments":segments,"width":width,"color":color}));
+            }
             serde_json::to_writer(
                 &mut writer,
-                &json!({"kind":"drawing","points":parsed,"width":width,"color":color,"label":if approved==1{0}else{1}}),
+                &json!({"kind":"drawing","strokes":samples,"label":if approved==1{0}else{1}}),
             )?;
             writer.write_all(b"\n")?;
             drawing_count += 1;

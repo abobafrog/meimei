@@ -1,5 +1,7 @@
-# Training/export only; the Rust server never imports PyTorch.
+# Training and export run on the Mac or a separate training workstation, not on 4-GB Ubuntu.
 numpy>=1.23,<2
 torch>=2.5,<2.6
 onnx>=1.16,<1.17
 onnxruntime>=1.20,<2
+Pillow>=10,<12
+timm>=1.0.15,<2

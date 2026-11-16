@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
             let connection = db::open(&config.database)?;
             let (text, drawing) =
                 training_export::export(&connection, &PathBuf::from(destination))?;
-            println!("Exported {text} text decisions and {drawing} stroke decisions.");
+            println!("Exported {text} text decisions and {drawing} complete drawing decisions.");
             return Ok(());
         }
         "serve" => {}
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
         .with_assistant(assistant);
     if let Some(sender) = ai_tx {
         tokio::spawn(ai::run_dispatcher(state.db.clone(), sender));
-        tracing::info!("local ONNX moderation is ready for notes; drawings publish immediately");
+        tracing::info!("local ONNX review is ready; drawings remain visible while moderators retain final decisions");
     }
 
     let app = build_app(&config, state.clone(), admin_config.as_ref());
@@ -165,6 +165,7 @@ fn build_app(
         .route("/api/strokes/{id}", put(api::update_my_stroke))
         .route("/api/notes", post(api::post_note))
         .route("/api/assistant", post(api::assistant))
+        .route("/api/mei-market", get(api::mei_market).post(api::trade_mei_market))
         .route("/api/visit", post(analytics::visit))
         .route("/api/service-event", post(analytics::service_event))
         .route("/api/interests", post(analytics::interests))

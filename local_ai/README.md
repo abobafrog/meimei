@@ -1,24 +1,45 @@
-# Обучение локальной модерации
+# Local AI files
 
-`train.py` запускается вручную на компьютере с Python/PyTorch и обучает только модели модерации. Rust использует ONNX Runtime для локальной модерации, а отдельный мини-помощник отвечает через компактную локальную GGUF-модель Qwen и llama.cpp. На первом запуске Frokla загружает Qwen из официального [репозитория Qwen](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF), проверяет SHA-256 и сохраняет файл в `models/assistant/`. PyTorch и внешняя AI-служба для работы сайта не нужны.
+Frokla's Rust server runs ONNX models locally with one inference thread. The
+tracked starter image model lives in `models/base-nsfw-384/`; it is a general
+NSFW detector and only adds a review hint. It never rejects a drawing by itself.
 
-1. Запусти Frokla и собери решения модератора: одобренные записи становятся классом `0` (разрешено), отклонённые — классом `1` (запрещено). Материалы со статусом «на проверке» не экспортируются.
-2. Создай приватный JSONL-экспорт командой `cargo run --release -- export-training /путь/к/решениям.jsonl`. Экспорт содержит только текст посланий и вектор штрихов вместе с решением; IP и статистика посещений туда не входят.
-3. На машине для обучения создай окружение и установи зависимости:
+`datasets/` contains a small, attributed Quick, Draw! sketch sample. Review the
+dataset notes before using it. It is not a set of rejected content and cannot
+represent Frokla's full moderation policy.
 
-   ```sh
-   python3 -m venv .venv
-   .venv/bin/pip install -r local_ai/requirements.txt
-   ```
+While serving, Rust recalculates the current drawing model's review threshold
+after every moderator decision on a scored drawing. It can make a small,
+conservative adjustment as soon as the first decision is recorded, then uses both
+approved and rejected examples to improve calibration as they accumulate. This
+uses little memory and affects future hints only; moderators still make every
+final decision. It does not update ONNX weights on the live server.
 
-4. Запусти обучение:
+For later training, copy images that a moderator has checked into the ignored
+folders `dataset/allowed/` and `dataset/rejected/`. Or export whole drawings
+that moderators already approved or rejected from the site's SQLite database:
 
-   ```sh
-   .venv/bin/python local_ai/train.py /путь/к/решениям.jsonl
-   ```
+```sh
+cargo run --release -- export-training /tmp/frokla-decisions.jsonl
+```
 
-Скрипт требует не менее 20 различных примеров каждого класса отдельно для текста и рисунков, делит данные на обучение и проверку, экспортирует модели и сверяет ONNX Runtime с PyTorch. Классификатор текста использует хешированные символьные n-граммы; классификатор рисунков — компактную CNN для одиночного штриха. Метрики и дата сохраняются в версии модели. Это стартовая система на решениях владельца, а не готовая экспертиза контента.
+Train on a Mac or separate workstation, not beside the live server on the
+4-GB Ubuntu machine:
 
-При успешном экспорте создаётся `local_ai/models/<версия>/` и атомарно обновляется `local_ai/models/current.json`. Перенеси весь этот каталог на сервер. Установи CPU ONNX Runtime и задай `ORT_DYLIB_PATH` при необходимости. При отсутствии файлов или библиотеки Rust продолжит ручную модерацию.
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r local_ai/requirements.txt
+.venv/bin/python local_ai/train_vision.py --export /tmp/frokla-decisions.jsonl
+```
 
-Оценка `flagged` не заменяет решение модератора и ничего не публикует. Не запускай обучение на 4-ГБ сервере рядом с сайтом. Для более надёжной оценки нужны существенно большие наборы, проверка ложных срабатываний и пропусков и отдельная контрольная выборка.
+The trainer fine-tunes the final ViT blocks of Marqo's Apache-2.0 NSFW model,
+checks its ONNX export with ONNX Runtime, then switches the local ignored
+`models/current.json` pointer. Training needs at least 20 labeled examples per
+class and downloads the original PyTorch weights on its first run. Keep the
+validation score as a small-dataset diagnostic, not a quality guarantee. Human
+moderation remains authoritative.
+
+Training images, database exports, trained model versions, and the pointer are
+excluded from Git. Copy a trained version and `current.json` separately when
+installing that trained model on Ubuntu. The SQLite file itself stays at its
+existing `FROKLA_DB` path and is never part of model deployment.

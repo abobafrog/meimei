@@ -1,30 +1,43 @@
 (() => {
  const board=document.getElementById('drawing-board'),ctx=board.getContext('2d'),status=document.getElementById('drawing-status');
- const viewport=document.querySelector('.canvas-viewport'),panButton=document.getElementById('canvas-pan'),eraserButton=document.getElementById('canvas-eraser');
- let pan=false,erasing=false,panPoint=null,erasingBusy=false;
+ const viewport=document.querySelector('.canvas-viewport'),panButton=document.getElementById('canvas-pan'),pageScrollButton=document.getElementById('canvas-scroll-page'),eraserButton=document.getElementById('canvas-eraser'),findSpaceButton=document.getElementById('canvas-find-space');
+ let pan=false,pageScroll=false,erasing=false,panPoint=null,erasingBusy=false,suggestedArea=null;
  function updateMode(){
   panButton.setAttribute('aria-pressed',String(pan));
   panButton.textContent=pan?'Режим: перемещение':'Режим: рисование';
+  pageScrollButton.setAttribute('aria-pressed',String(pageScroll));
+  pageScrollButton.textContent=pageScroll?'Режим: прокрутка страницы':'Прокрутка страницы';
   eraserButton.setAttribute('aria-pressed',String(erasing));
   document.getElementById('brush-label').textContent=erasing?'Размер ластика':'Кисть';
-  board.style.cursor=pan?'grab':erasing?'cell':'crosshair';
+  board.style.cursor=pageScroll?'default':pan?'grab':erasing?'cell':'crosshair';
   viewport.classList.toggle('pan-mode',pan);
+  viewport.classList.toggle('page-scroll-mode',pageScroll);
   viewport.classList.toggle('eraser-mode',erasing);
-  viewport.dataset.mode=pan?'pan':erasing?'erase':'draw';
+  viewport.dataset.mode=pageScroll?'page-scroll':pan?'pan':erasing?'erase':'draw';
  }
- panButton.onclick=()=>{pan=!pan;if(pan)erasing=false;updateMode()};
- eraserButton.onclick=()=>{erasing=!erasing;if(erasing)pan=false;updateMode();status.textContent=erasing?'Нажми на свой штрих, чтобы стереть его.':'Общий холст · рисунки появляются сразу'};
+ panButton.onclick=()=>{pan=!pan;pageScroll=false;if(pan)erasing=false;updateMode()};
+ pageScrollButton.onclick=()=>{pageScroll=!pageScroll;if(pageScroll){pan=false;erasing=false}updateMode();status.textContent=pageScroll?'Режим прокрутки страницы включён. Холст временно не принимает рисунки.':'Общий холст · рисунки появляются сразу'};
+ eraserButton.onclick=async()=>{if(!erasing&&(!mineReady||Date.now()-lastMineSync>10000))await refreshMine();if(!window.froklaLocal&&!mineAuthorized){status.textContent='Не удалось загрузить твои рисунки. Проверь подключение и попробуй ещё раз.';return}erasing=!erasing;pageScroll=false;if(erasing)pan=false;updateMode();status.textContent=erasing?(mine.size?'Веди пальцем или мышью по своим линиям, чтобы стереть их.':'У тебя пока нет рисунков для стирания.'):'Общий холст · рисунки появляются сразу'};
  viewport.dataset.mode='draw';
- viewport.addEventListener('wheel',e=>{if(!pan)e.preventDefault()},{passive:false});
- viewport.addEventListener('touchmove',e=>{if(!pan)e.preventDefault()},{passive:false});
- viewport.addEventListener('keydown',e=>{if(!pan&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key))e.preventDefault()});
+ viewport.addEventListener('wheel',e=>{if(e.ctrlKey||!e.deltaY)return;const multiplier=e.deltaMode===1?16:e.deltaMode===2?window.innerHeight:1;window.scrollBy(0,e.deltaY*multiplier);e.preventDefault()},{passive:false});
  let active=null,eraseStroke=null,ready=false,polling=false,cursor=0,lastReconcile=0,lastMineSync=0,mineReady=false,mineAuthorized=false,pending=[];
  const strokes=new Map(),own=new Map(),mine=new Map();
+ let drawingSession=null,drawingSessionUpdated=0;
+ function newId(){return crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')}
+ function drawingId(){
+  const now=Date.now();
+  try{const saved=JSON.parse(localStorage.getItem('frokla-drawing-session')||'null');if(saved&&typeof saved.id==='string'&&Number.isFinite(saved.updated)&&now-saved.updated<15*60*1000){drawingSession=saved.id;drawingSessionUpdated=saved.updated}}catch{}
+  if(!drawingSession||now-drawingSessionUpdated>=15*60*1000)drawingSession=newId();
+  drawingSessionUpdated=now;
+  try{localStorage.setItem('frokla-drawing-session',JSON.stringify({id:drawingSession,updated:now}))}catch{}
+  return drawingSession
+ }
  function paintPath(path,s){if(!path?.length)return;ctx.strokeStyle=s.color;ctx.fillStyle=s.color;ctx.lineWidth=s.width;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();if(path.length===1){ctx.arc(path[0][0],path[0][1],s.width/2,0,Math.PI*2);ctx.fill();return}ctx.moveTo(...path[0]);for(const p of path.slice(1))ctx.lineTo(...p);ctx.stroke()}
  function paint(s){const paths=s.segments===undefined||s.segments===null?[s.points]:s.segments;for(const path of paths)paintPath(path,s)}
- function render(){ctx.clearRect(0,0,board.width,board.height);for(const s of strokes.values())paint(s);for(const s of own.values())if(!strokes.has(s.id))paint(s);for(const s of pending)paint(s);if(active)paint(active);if(eraseStroke?.points.length){const p=eraseStroke.points.at(-1),radius=eraserRadius();ctx.save();ctx.strokeStyle='#d4ecffcc';ctx.lineWidth=1.2*4800/board.getBoundingClientRect().width;ctx.beginPath();ctx.arc(p[0],p[1],radius,0,Math.PI*2);ctx.stroke();ctx.restore()}}
+ function render(){ctx.clearRect(0,0,board.width,board.height);for(const s of strokes.values())paint(s);for(const s of own.values())if(!strokes.has(s.id))paint(s);for(const s of pending)paint(s);if(active)paint(active);if(suggestedArea){ctx.save();ctx.fillStyle='#78cfff12';ctx.strokeStyle='#9edfff';ctx.lineWidth=8;ctx.setLineDash([34,22]);ctx.fillRect(suggestedArea.x,suggestedArea.y,suggestedArea.width,suggestedArea.height);ctx.strokeRect(suggestedArea.x,suggestedArea.y,suggestedArea.width,suggestedArea.height);ctx.setLineDash([]);ctx.font='600 58px system-ui,sans-serif';const label='Свободное место';const labelWidth=ctx.measureText(label).width+38;ctx.fillStyle='#0b1a29e8';ctx.fillRect(suggestedArea.x+22,suggestedArea.y+22,labelWidth,82);ctx.fillStyle='#e8f7ff';ctx.fillText(label,suggestedArea.x+41,suggestedArea.y+78);ctx.restore()}if(eraseStroke?.points.length){const p=eraseStroke.points.at(-1),radius=eraserRadius();ctx.save();ctx.strokeStyle='#d4ecffcc';ctx.lineWidth=1.2*4800/board.getBoundingClientRect().width;ctx.beginPath();ctx.arc(p[0],p[1],radius,0,Math.PI*2);ctx.stroke();ctx.restore()}}
  async function refreshMine(){
   try{
+   await(window.froklaVisitReady||Promise.resolve());
    const fresh=new Map();let after=0;
    do{const r=await window.froklaRequest('/api/strokes/mine?after='+after,{cache:'no-store'});if(!r.ok){lastMineSync=Date.now();if(r.status===401){mine.clear();mineAuthorized=false;mineReady=true}return false}const data=await r.json();let pageCursor=after;for(const s of data.strokes){fresh.set(s.id,s);pageCursor=Math.max(pageCursor,s.seq)}if(!data.hasMore||pageCursor===after)break;after=pageCursor}while(true);
    for(const id of mine.keys())if(!fresh.has(id)){mine.delete(id);own.delete(id)}
@@ -39,15 +52,15 @@
    const full=cursor===0||Date.now()-lastReconcile>30000;let after=full?0:cursor,first=true;
    do{const r=await window.froklaRequest('/api/strokes?after='+after,{cache:'no-store'});if(!r.ok)throw Error();const data=await r.json();if(first&&!data.incremental){strokes.clear();lastReconcile=Date.now()}first=false;let pageCursor=after;for(const s of data.strokes){strokes.set(s.id,s);pageCursor=Math.max(pageCursor,s.seq);cursor=Math.max(cursor,s.seq)}if(!data.hasMore||pageCursor===after)break;after=pageCursor}while(true);
    if(!mineReady||Date.now()-lastMineSync>30000)await refreshMine();
-   ready=true;eraserButton.disabled=!mineAuthorized;status.textContent=window.froklaLocal?'Холст сохранён в этом браузере':pending.length?'Есть неотправленные штрихи. Повторяем отправку…':'Общий холст · рисунки появляются сразу';render();
+   ready=true;eraserButton.disabled=false;status.textContent=window.froklaLocal?'Холст сохранён в этом браузере':suggestedArea?'Свободная область отмечена пунктиром — рисуй здесь.':pending.length?'Есть неотправленные штрихи. Повторяем отправку…':'Общий холст · рисунки появляются сразу';render();
   }catch{ready=false;status.textContent='Нет связи с общим холстом. Для совместного рисования открой сайт через сервер'}finally{polling=false}
  }
  let sending=false;
- async function flush(){if(sending||!pending.length)return;sending=true;try{await(window.froklaVisitReady||Promise.resolve());while(pending.length){const s=pending[0],r=await window.froklaRequest('/api/strokes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}),saved=await r.json();if(!r.ok){if(r.status===429){pending=[];active=null;status.textContent=saved.error;return}if(r.status>=400&&r.status<500){pending.shift();status.textContent='Штрих отклонён сервером';continue}throw Error()}strokes.set(saved.id,saved);pending.shift();receiveLimits(saved.limits)}await refreshMine();status.textContent=window.froklaLocal?'Холст сохранён в этом браузере':'Рисунок опубликован на общем холсте'}catch{status.textContent=window.froklaLocal?'Не сохранено: хранилище недоступно или заполнено':'Штрих пока не сохранён. Отправка повторится'}finally{sending=false;render()}}
+ async function flush(){if(sending||!pending.length)return;sending=true;try{await(window.froklaVisitReady||Promise.resolve());while(pending.length){const s=pending[0],r=await window.froklaRequest('/api/strokes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}),saved=await r.json();if(!r.ok){if(r.status===429){pending=[];active=null;status.textContent=saved.error;return}if(r.status>=400&&r.status<500){pending.shift();status.textContent=saved.error||'Штрих отклонён сервером';continue}throw Error()}strokes.set(saved.id,saved);pending.shift();receiveLimits(saved.limits)}await refreshMine();status.textContent=window.froklaLocal?'Холст сохранён в этом браузере':'Рисунок опубликован на общем холсте'}catch{status.textContent=window.froklaLocal?'Не сохранено: хранилище недоступно или заполнено':'Штрих пока не сохранён. Отправка повторится'}finally{sending=false;render()}}
  function point(e){const r=board.getBoundingClientRect();return[Math.max(0,Math.min(4800,(e.clientX-r.left)*4800/r.width)),Math.max(0,Math.min(2800,(e.clientY-r.top)*2800/r.height))]}
  function segmentDistance(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],length=dx*dx+dy*dy;if(!length)return Math.hypot(p[0]-a[0],p[1]-a[1]);const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/length));return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy))}
  function compactErasePath(points){if(points.length<=512)return points;const keep=new Uint8Array(points.length);keep[0]=keep[points.length-1]=1;const stack=[[0,points.length-1]],tolerance=eraserRadius()*.2;while(stack.length){const[start,end]=stack.pop();let farthest=0,index=-1;for(let i=start+1;i<end;i++){const distance=segmentDistance(points[i],points[start],points[end]);if(distance>farthest){farthest=distance;index=i}}if(index>=0&&farthest>tolerance){keep[index]=1;stack.push([start,index],[index,end])}}let reduced=points.filter((_,i)=>keep[i]);if(reduced.length>512){const stride=Math.ceil((reduced.length-1)/511);reduced=reduced.filter((_,i)=>i%stride===0);if(reduced.at(-1)!==points.at(-1))reduced.push(points.at(-1))}return reduced}
- function eraserRadius(){return(.8+Number(document.getElementById('brush').value)*.35)*4800/board.getBoundingClientRect().width}
+ function eraserRadius(){return Math.min(90,Math.max(1,(.8+Number(document.getElementById('brush').value)*.35)*4800/board.getBoundingClientRect().width))}
  function erasedAt(p,erasePoints,radius){if(erasePoints.length===1)return Math.hypot(p[0]-erasePoints[0][0],p[1]-erasePoints[0][1])<=radius;for(let i=1;i<erasePoints.length;i++)if(segmentDistance(p,erasePoints[i-1],erasePoints[i])<=radius)return true;return false}
  function lerpPoint(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
  function clipPath(path,erasePoints,radius){
@@ -71,8 +84,37 @@
   for(const [id,original]of session.base)if(!session.preview.has(id)){mine.set(id,original);strokes.set(id,original)}render()
  }
  function startErase(e){if(erasingBusy||!mineAuthorized){status.textContent='Список своих рисунков пока недоступен';return}eraseStroke={pointer:e.pointerId,points:[point(e)],base:new Map(mine),preview:new Map()};applyErasePreview()}
- async function finishErase(){const session=eraseStroke;if(!session)return;eraseStroke=null;render();if(!session.preview.size){status.textContent=session.tooComplex?'Проведи ластиком по этой части короче':'Под кистью нет своих рисунков';return}erasingBusy=true;status.textContent='Стираем фрагменты…';let failed=0;try{for(const[id,updated]of session.preview){const segments=updated.segments.map(path=>path.map(p=>p.map(value=>Math.round(value*10)/10))),payload=window.froklaLocal?{segments}:{path:compactErasePath(session.points),radius:eraserRadius()},r=await window.froklaRequest('/api/strokes/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok){failed++;const original=session.base.get(id);mine.set(id,original);strokes.set(id,original);continue}const savedData=await r.json(),savedSegments=window.froklaLocal?segments:savedData.segments;const saved={...updated,segments:savedSegments};mine.set(id,saved);strokes.set(id,saved)}status.textContent=failed||session.tooComplex?'Часть фрагментов не стёрлась. Проведи ластиком по ним короче':'Фрагменты стёрты'}catch{await refreshMine();status.textContent='Не удалось связаться с холстом'}finally{erasingBusy=false;render()}}
- board.addEventListener('pointerdown',e=>{board.setPointerCapture(e.pointerId);if(active||eraseStroke)return;if(!pan)e.preventDefault();if(pan){panPoint={x:e.clientX,y:e.clientY,id:e.pointerId};return}if(erasing){startErase(e);return}if(!ready){status.textContent='Загружаем общий холст…';return}active={id:(crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')),color:document.getElementById('ink').value,width:Number(document.getElementById('brush').value),points:[point(e)],pointer:e.pointerId};render()});
+ async function finishErase(){
+  const session=eraseStroke;if(!session)return;eraseStroke=null;render();
+  if(!session.preview.size){status.textContent=session.tooComplex?'Проведи ластиком по этой части короче':'Под ластиком нет твоих линий';return}
+  erasingBusy=true;status.textContent='Стираем линии…';let failed=0,firstError='';
+  try{
+   for(const[id,updated]of session.preview){
+    const segments=updated.segments.map(path=>path.map(p=>p.map(value=>Math.round(value*10)/10)));
+    const payload=window.froklaLocal?{segments}:{path:compactErasePath(session.points),radius:eraserRadius()};
+    const response=await window.froklaRequest('/api/strokes/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const savedData=await response.json().catch(()=>({}));
+    if(!response.ok){failed++;firstError||=savedData.error||'сервер не сохранил изменения';const original=session.base.get(id);mine.set(id,original);strokes.set(id,original);continue}
+    if(savedData.deleted){mine.delete(id);own.delete(id);strokes.delete(id);continue}
+    const saved={...updated,segments:window.froklaLocal?segments:savedData.segments};mine.set(id,saved);strokes.set(id,saved)
+   }
+   if(failed||session.tooComplex)status.textContent=firstError?'Не удалось сохранить стирание: '+firstError:'Часть линий не стёрлась. Проведи по ним короткими движениями.';
+   else status.textContent='Линии стёрты';
+  }catch{await refreshMine();status.textContent='Не удалось связаться с холстом. Проверь подключение и повтори.'}
+  finally{erasingBusy=false;render()}
+ }
+ function findFreeCanvasSpace(){
+  if(!ready){status.textContent='Сначала дождись загрузки общего холста.';return}
+  const cell=120,columns=Math.ceil(board.width/cell),rows=Math.ceil(board.height/cell),areaColumns=6,areaRows=4,occupied=new Uint8Array(columns*rows);
+  const mark=(x,y)=>{const column=Math.floor(x/cell),row=Math.floor(y/cell);if(column>=0&&column<columns&&row>=0&&row<rows)occupied[row*columns+column]=1};
+  const markPath=path=>{if(!path?.length)return;mark(path[0][0],path[0][1]);for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],steps=Math.max(1,Math.ceil(Math.max(Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]))/(cell*.4)));for(let step=1;step<=steps;step++){const t=step/steps;mark(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t)}}};
+  const all=new Map(strokes);for(const[id,stroke]of own)if(!all.has(id))all.set(id,stroke);for(const stroke of [...all.values(),...pending,...(active?[active]:[])]){const paths=stroke.segments==null?[stroke.points]:stroke.segments;for(const path of paths)markPath(path)}
+  const free=[];for(let y=1;y<=rows-areaRows-1;y++)for(let x=1;x<=columns-areaColumns-1;x++){let clear=true;for(let row=y-1;row<y+areaRows+1&&clear;row++)for(let column=x-1;column<x+areaColumns+1;column++)if(occupied[row*columns+column]){clear=false;break}if(clear)free.push({x:x*cell,y:y*cell,width:areaColumns*cell,height:areaRows*cell})}
+  if(!free.length){suggestedArea=null;render();status.textContent='Пока не нашлось свободного участка нужного размера. Попробуй ещё раз позже.';return}
+  suggestedArea=free[Math.floor(Math.random()*free.length)];render();const scale=board.getBoundingClientRect().width/board.width,left=suggestedArea.x*scale+suggestedArea.width*scale/2-viewport.clientWidth/2,top=suggestedArea.y*scale+suggestedArea.height*scale/2-viewport.clientHeight/2;viewport.scrollTo({left:Math.max(0,Math.min(left,viewport.scrollWidth-viewport.clientWidth)),top:Math.max(0,Math.min(top,viewport.scrollHeight-viewport.clientHeight)),behavior:'smooth'});status.textContent='Нашла свободную область и отдалила её от существующих рисунков. Начинай рисовать!';
+ }
+ findSpaceButton?.addEventListener('click',findFreeCanvasSpace);
+ board.addEventListener('pointerdown',e=>{board.setPointerCapture(e.pointerId);if(active||eraseStroke)return;if(!pan)e.preventDefault();if(pan){panPoint={x:e.clientX,y:e.clientY,id:e.pointerId};return}if(erasing){startErase(e);return}if(suggestedArea){suggestedArea=null;render()}if(!ready){status.textContent='Загружаем общий холст…';return}active={id:newId(),drawingId:drawingId(),color:document.getElementById('ink').value,width:Number(document.getElementById('brush').value),points:[point(e)],pointer:e.pointerId};render()});
  board.addEventListener('pointermove',e=>{if(panPoint?.id===e.pointerId){viewport.scrollLeft-=e.clientX-panPoint.x;viewport.scrollTop-=e.clientY-panPoint.y;panPoint.x=e.clientX;panPoint.y=e.clientY;return}if(eraseStroke?.pointer===e.pointerId){const next=point(e),last=eraseStroke.points.at(-1);if(Math.hypot(next[0]-last[0],next[1]-last[1])>Math.max(4,eraserRadius()*.18)){eraseStroke.points.push(next);applyErasePreview()}return}if(!active||active.pointer!==e.pointerId)return;if(active.points.length<1800){const next=point(e);active.points.push(next)}render()});
  function finish(e){if(panPoint?.id===e.pointerId)panPoint=null;if(eraseStroke?.pointer===e.pointerId){finishErase();return}if(!active||active.pointer!==e.pointerId)return;delete active.pointer;pending.push(active);active=null;flush()}board.addEventListener('pointerup',finish);board.addEventListener('pointercancel',finish);
  document.getElementById('fullscreen-art').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.querySelector('.drawing').requestFullscreen()}catch{status.textContent='Полноэкранный режим недоступен в этом браузере'}};

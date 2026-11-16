@@ -39,32 +39,36 @@ def text_features(value):
 
 
 def drawing_image(row):
-    # Keep rasterization identical to src/ai.rs so training samples and
-    # inference inputs use the same coordinate and brush-width rules.
+    # JSONL exports group strokes into complete drawings. Keep rendering close
+    # to src/ai.rs so a model sees the whole composition instead of one line.
     rgb = np.empty((IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8)
     rgb[:] = (16, 17, 20)
-    color = np.frombuffer(bytes.fromhex(row["color"].lstrip("#")), dtype=np.uint8)
-    radius = max(row["width"] / 2 * IMAGE_SIZE / 4800, 1.0)
-    points = row["points"]
-    segments = zip(points, points[1:]) if len(points) > 1 else [(points[0], points[0])]
-
-    for start, end in segments:
-        x0 = start[0] / 4800 * (IMAGE_SIZE - 1)
-        y0 = start[1] / 2800 * (IMAGE_SIZE - 1)
-        x1 = end[0] / 4800 * (IMAGE_SIZE - 1)
-        y1 = end[1] / 2800 * (IMAGE_SIZE - 1)
-        steps = max(math.ceil(math.hypot(x1 - x0, y1 - y0)), 1)
-        for index in range(steps + 1):
-            fraction = index / steps
-            x = x0 + (x1 - x0) * fraction
-            y = y0 + (y1 - y0) * fraction
-            min_x = max(math.floor(x - radius), 0)
-            max_x = min(math.ceil(x + radius), IMAGE_SIZE - 1)
-            min_y = max(math.floor(y - radius), 0)
-            max_y = min(math.ceil(y + radius), IMAGE_SIZE - 1)
-            grid_y, grid_x = np.ogrid[min_y:max_y + 1, min_x:max_x + 1]
-            mask = (grid_x - x) ** 2 + (grid_y - y) ** 2 <= radius ** 2
-            rgb[min_y:max_y + 1, min_x:max_x + 1][mask] = color
+    strokes = row.get("strokes") or [row]
+    for stroke in strokes:
+        color = np.frombuffer(bytes.fromhex(stroke["color"].lstrip("#")), dtype=np.uint8)
+        radius = max(stroke["width"] / 2 * IMAGE_SIZE / 4800, 1.0)
+        paths = stroke.get("segments") or [stroke["points"]]
+        for points in paths:
+            if not points:
+                continue
+            segments = zip(points, points[1:]) if len(points) > 1 else [(points[0], points[0])]
+            for start, end in segments:
+                x0 = start[0] / 4800 * (IMAGE_SIZE - 1)
+                y0 = start[1] / 2800 * (IMAGE_SIZE - 1)
+                x1 = end[0] / 4800 * (IMAGE_SIZE - 1)
+                y1 = end[1] / 2800 * (IMAGE_SIZE - 1)
+                steps = max(math.ceil(math.hypot(x1 - x0, y1 - y0)), 1)
+                for index in range(steps + 1):
+                    fraction = index / steps
+                    x = x0 + (x1 - x0) * fraction
+                    y = y0 + (y1 - y0) * fraction
+                    min_x = max(math.floor(x - radius), 0)
+                    max_x = min(math.ceil(x + radius), IMAGE_SIZE - 1)
+                    min_y = max(math.floor(y - radius), 0)
+                    max_y = min(math.ceil(y + radius), IMAGE_SIZE - 1)
+                    grid_y, grid_x = np.ogrid[min_y:max_y + 1, min_x:max_x + 1]
+                    mask = (grid_x - x) ** 2 + (grid_y - y) ** 2 <= radius ** 2
+                    rgb[min_y:max_y + 1, min_x:max_x + 1][mask] = color
 
     return rgb.astype(np.float32).transpose(2, 0, 1) / 255.0
 
@@ -104,8 +108,10 @@ def load_rows(path):
         kind = row["kind"]
         if kind == "text" and not isinstance(row.get("text"), str):
             raise ValueError("line %d: text missing" % line_number)
-        if kind == "drawing" and (not isinstance(row.get("points"), list) or row.get("color") is None or row.get("width") is None):
-            raise ValueError("line %d: drawing fields missing" % line_number)
+        if kind == "drawing":
+            strokes = row.get("strokes") or [row]
+            if not strokes or any(not isinstance(stroke.get("points"), list) or stroke.get("color") is None or stroke.get("width") is None for stroke in strokes):
+                raise ValueError("line %d: drawing strokes missing points/color/width" % line_number)
         digest = hashlib.sha256(json.dumps(row, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         if digest in seen:
             if seen[digest] != row["label"]:

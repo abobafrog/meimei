@@ -110,12 +110,22 @@ pub async fn visit(
             let peer_hash = peer_key(&secret, ip);
             let cutoff = timestamp - MAX_VISIT_DAYS * 86_400;
             connection.execute("DELETE FROM visits WHERE created<?", [cutoff])?;
+            connection.execute(
+                "DELETE FROM visitor_profiles WHERE last_seen<? AND visitor NOT IN
+                   (SELECT DISTINCT visitor FROM drawings WHERE visitor IS NOT NULL)",
+                [cutoff],
+            )?;
             // Keep drawing ownership as long as the drawing exists so its author can erase it.
             connection.execute("DELETE FROM submissions WHERE kind='notes' AND created<?", [cutoff])?;
             connection.execute("DELETE FROM visitor_interests WHERE updated<?", [cutoff])?;
             connection.execute("DELETE FROM geo_cache WHERE expires<?", [timestamp])?;
             connection.execute("DELETE FROM geo_requests WHERE day<?", [day(timestamp-2*86_400)])?;
             connection.execute("UPDATE visits SET geo_status='unavailable' WHERE geo_status='pending' AND created<?", [timestamp-120])?;
+            connection.execute(
+                "INSERT INTO visitor_profiles(visitor,first_seen,last_seen) VALUES(?,?,?)
+                 ON CONFLICT(visitor) DO UPDATE SET last_seen=MAX(last_seen,excluded.last_seen)",
+                params![visitor, timestamp, timestamp],
+            )?;
 
             let recent: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM visits WHERE visitor=? AND ip=? AND created>?)", params![visitor, ip.to_string(), timestamp-30], |r| r.get(0))?;
             let cached: Option<(String, i64)> = connection.query_row("SELECT payload,expires FROM geo_cache WHERE peer=?", [&peer_hash], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
@@ -459,6 +469,10 @@ pub async fn service_event(
         "converter",
         "notes",
         "budget",
+        "casino",
+        "stream",
+        "mei-clicker",
+        "mei-market",
     ]
     .contains(&service.as_str())
         || !["open", "interact", "submit"].contains(&action.as_str())

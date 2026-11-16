@@ -18,6 +18,8 @@ pub struct NoteRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrokeRequest {
     pub id: String,
+    #[serde(default, rename = "drawingId")]
+    pub drawing_id: Option<String>,
     pub color: String,
     pub width: f64,
     pub points: Vec<[f64; 2]>,
@@ -68,6 +70,13 @@ pub fn validate_note(note: &NoteRequest) -> Result<(String, String), &'static st
 pub fn validate_stroke(stroke: &StrokeRequest) -> Result<(), &'static str> {
     if !ID_RE.is_match(&stroke.id) || !COLOR_RE.is_match(&stroke.color) {
         return Err("Invalid stroke");
+    }
+    if stroke
+        .drawing_id
+        .as_deref()
+        .is_some_and(|drawing_id| !ID_RE.is_match(drawing_id))
+    {
+        return Err("Invalid drawing");
     }
     if !stroke.width.is_finite() || !(2.0..=28.0).contains(&stroke.width) {
         return Err("Invalid stroke");

@@ -14,7 +14,8 @@ use axum::{
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::net::SocketAddr;
+use sha2::{Digest, Sha256};
+use std::{net::SocketAddr, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Deserialize)]
 pub struct StrokeQuery {
@@ -252,12 +253,16 @@ pub async fn my_strokes(
     let result = state.db.call(move |connection| {
         let mut statement = connection.prepare(
             "SELECT s.seq,s.id,s.color,s.width,s.points,s.approved,s.auto_status,s.auto_details,s.segments
-             FROM strokes s JOIN submissions owner
-               ON owner.kind='strokes' AND owner.item=CAST(s.seq AS TEXT) AND owner.visitor=?
-             WHERE s.approved=1 AND s.seq>? ORDER BY s.seq LIMIT 2001",
+             FROM strokes s LEFT JOIN drawings d ON d.id=s.drawing_id
+             WHERE s.seq>? AND (
+               d.visitor=? OR EXISTS(
+                 SELECT 1 FROM submissions owner
+                 WHERE owner.kind='strokes' AND owner.item=CAST(s.seq AS TEXT) AND owner.visitor=?
+               )
+             ) ORDER BY s.seq LIMIT 2001",
         )?;
         let all = statement
-            .query_map(params![visitor, after], stroke_row)?
+            .query_map(params![after, visitor, visitor], stroke_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let has_more = all.len() > 2000;
         let rows: Vec<_> = all.into_iter().take(2000).collect();
@@ -274,6 +279,7 @@ pub async fn my_strokes(
 
 enum StrokeUpdate {
     Updated(Vec<Vec<[f64; 2]>>, Limits),
+    Deleted(Limits),
     Missing,
     Forbidden,
     TooComplex,
@@ -333,22 +339,28 @@ pub async fn update_my_stroke(
         );
     };
     let address = client_ip(peer, &headers, &state.config.trusted_proxies);
+    let ai_enabled = state.ai_tx.is_some();
+    let updated_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
     let result = state.db.call(move |connection| {
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let stroke: Option<(i64, f64, String, Option<String>, f64, Option<String>)> = tx
+        let stroke: Option<(i64, Option<String>, f64, String, Option<String>, f64, Option<String>)> = tx
             .query_row(
-                "SELECT seq,width,points,segments,remaining_cost,quota_peer FROM strokes WHERE id=?",
+                "SELECT seq,drawing_id,width,points,segments,remaining_cost,quota_peer FROM strokes WHERE id=?",
                 [&id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
             )
             .optional()?;
-        let Some((seq, width, points_raw, segments_raw, remaining_cost, quota_peer)) = stroke else {
+        let Some((seq, drawing_id, width, points_raw, segments_raw, remaining_cost, quota_peer)) = stroke else {
             return Ok(StrokeUpdate::Missing);
         };
         let item = seq.to_string();
         let is_owner: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM submissions WHERE kind='strokes' AND item=? AND visitor=?)",
-            params![item, visitor],
+            "SELECT EXISTS(SELECT 1 FROM submissions WHERE kind='strokes' AND item=? AND visitor=?)
+                    OR EXISTS(SELECT 1 FROM strokes s JOIN drawings d ON d.id=s.drawing_id WHERE s.seq=? AND d.visitor=?)",
+            params![item, visitor, seq, visitor],
             |row| row.get(0),
         )?;
         if !is_owner { return Ok(StrokeUpdate::Forbidden) }
@@ -386,8 +398,84 @@ pub async fn update_my_stroke(
             let owner_peer = quota_peer.as_deref().unwrap_or(&current_key);
             tx.execute("UPDATE quotas SET ink=MAX(0,ink-?) WHERE peer=?", params![refund, owner_peer])?;
         }
-        let encoded = serde_json::to_string(&segments)?;
-        tx.execute("UPDATE strokes SET segments=?,remaining_cost=?,quota_peer=COALESCE(quota_peer,?) WHERE seq=?", params![encoded, stored_cost, current_key, seq])?;
+        if segments.is_empty() {
+            tx.execute("DELETE FROM strokes WHERE seq=?", [seq])?;
+            tx.execute("DELETE FROM submissions WHERE kind='strokes' AND item=?", [&item])?;
+            tx.execute("DELETE FROM ai_reviews WHERE kind='strokes' AND item_id=?", [seq])?;
+            tx.execute("DELETE FROM ai_queue WHERE kind='strokes' AND item_id=?", [seq])?;
+            if let Some(drawing_id) = drawing_id.as_deref() {
+                let drawing_seq: Option<i64> = tx.query_row(
+                    "SELECT seq FROM drawings WHERE id=?",
+                    [drawing_id],
+                    |row| row.get(0),
+                ).optional()?;
+                let remaining_strokes: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM strokes WHERE drawing_id=?",
+                    [drawing_id],
+                    |row| row.get(0),
+                )?;
+                if let Some(drawing_seq) = drawing_seq {
+                    if remaining_strokes == 0 {
+                        tx.execute("DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                        tx.execute("DELETE FROM ai_queue WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                        tx.execute("DELETE FROM drawings WHERE seq=?", [drawing_seq])?;
+                    } else {
+                        tx.execute(
+                            "UPDATE drawings SET updated=?,revision=revision+1,moderation_reviewed=0 WHERE seq=?",
+                            params![updated_at, drawing_seq],
+                        )?;
+                        tx.execute("DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                        if ai_enabled {
+                            tx.execute(
+                                "INSERT INTO ai_queue(kind,item_id,state,created) VALUES('drawings',?,'queued',?)
+                                 ON CONFLICT(kind,item_id) DO UPDATE SET
+                                   state=CASE WHEN ai_queue.state='running' THEN 'running' ELSE 'queued' END,
+                                   created=excluded.created,
+                                   started=CASE WHEN ai_queue.state='running' THEN ai_queue.started ELSE NULL END",
+                                params![drawing_seq, updated_at],
+                            )?;
+                        } else {
+                            tx.execute("DELETE FROM ai_queue WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                        }
+                    }
+                }
+            }
+            let limits = quota_limits(&tx, &current_key)?;
+            tx.commit()?;
+            return Ok(StrokeUpdate::Deleted(limits));
+        }
+        let encoded_segments = serde_json::to_string(&segments)?;
+        let encoded_points = serde_json::to_string(&segments[0])?;
+        tx.execute(
+            "UPDATE strokes SET points=?,segments=?,remaining_cost=?,quota_peer=COALESCE(quota_peer,?) WHERE seq=?",
+            params![encoded_points, encoded_segments, stored_cost, current_key, seq],
+        )?;
+        if let Some(drawing_id) = drawing_id.as_deref() {
+            let drawing_seq: Option<i64> = tx.query_row(
+                "SELECT seq FROM drawings WHERE id=?",
+                [drawing_id],
+                |row| row.get(0),
+            ).optional()?;
+            if let Some(drawing_seq) = drawing_seq {
+                tx.execute(
+                    "UPDATE drawings SET updated=?,revision=revision+1,moderation_reviewed=0 WHERE seq=?",
+                    params![updated_at, drawing_seq],
+                )?;
+                tx.execute("DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                if ai_enabled {
+                    tx.execute(
+                        "INSERT INTO ai_queue(kind,item_id,state,created) VALUES('drawings',?,'queued',?)
+                         ON CONFLICT(kind,item_id) DO UPDATE SET
+                           state=CASE WHEN ai_queue.state='running' THEN 'running' ELSE 'queued' END,
+                           created=excluded.created,
+                           started=CASE WHEN ai_queue.state='running' THEN ai_queue.started ELSE NULL END",
+                        params![drawing_seq, updated_at],
+                    )?;
+                } else {
+                    tx.execute("DELETE FROM ai_queue WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                }
+            }
+        }
         let limits = quota_limits(&tx, &current_key)?;
         tx.commit()?;
         Ok(StrokeUpdate::Updated(segments, limits))
@@ -395,6 +483,9 @@ pub async fn update_my_stroke(
     match result {
         Ok(StrokeUpdate::Updated(segments, limits)) => {
             json_response(StatusCode::OK, json!({"segments":segments,"limits":limits}))
+        }
+        Ok(StrokeUpdate::Deleted(limits)) => {
+            json_response(StatusCode::OK, json!({"deleted":true,"limits":limits}))
         }
         Ok(StrokeUpdate::Missing) => api_error(StatusCode::NOT_FOUND, "Рисунок не найден"),
         Ok(StrokeUpdate::Forbidden) => {
@@ -486,6 +577,7 @@ pub async fn post_note(
 
 enum StrokeSave {
     Saved(Stroke, Limits),
+    DrawingConflict,
 }
 
 pub async fn post_stroke(
@@ -512,26 +604,106 @@ pub async fn post_stroke(
         return api_error(StatusCode::BAD_REQUEST, error);
     }
     let address = client_ip(peer, &headers, &state.config.trusted_proxies);
-    let visitor = cookie(&headers, "frokla_visitor")
+    let Some(visitor) = cookie(&headers, "frokla_visitor")
         .filter(|value| value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .unwrap_or_default();
+    else {
+        return api_error(StatusCode::UNAUTHORIZED, "Не удалось создать профиль автора. Обнови страницу и попробуй снова.");
+    };
+    let drawing_id = stroke
+        .drawing_id
+        .clone()
+        .unwrap_or_else(|| format!("legacy-stroke-{}", stroke.id));
+    let ai_enabled = state.ai_tx.is_some();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
     let id = stroke.id.clone();
-    let result=state.db.call(move|connection|{
-        let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        if let Some(record)=load_stroke(&tx,&id)?{let secret:String=tx.query_row("SELECT value FROM quota_settings WHERE key='secret'",[],|r|r.get(0))?;let limits=quota_limits(&tx,&peer_key(&secret,address))?;tx.commit()?;return Ok(StrokeSave::Saved(record,limits))}
-        let secret:String=tx.query_row("SELECT value FROM quota_settings WHERE key='secret'",[],|r|r.get(0))?;
-        let key=peer_key(&secret,address);
-        let points=serde_json::to_string(&stroke.points)?;
-        tx.execute("INSERT INTO strokes(id,color,width,points,approved,auto_status) VALUES(?,?,?,?,1,'not_required')",params![stroke.id,stroke.color,stroke.width,points])?;
-        let seq=tx.last_insert_rowid();
-        if !visitor.is_empty(){tx.execute("INSERT OR IGNORE INTO submissions(kind,item,visitor,created) VALUES('strokes',?,?,?)",params![seq.to_string(),visitor,timestamp])?;}
-        let limits=quota_limits(&tx,&key)?;let record=load_stroke_by_seq(&tx,seq)?.expect("inserted stroke");tx.commit()?;
-        Ok(StrokeSave::Saved(record,limits))
-    }).await;
+    let result = state
+        .db
+        .call(move |connection| {
+            let tx = connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if let Some(record) = load_stroke(&tx, &id)? {
+                let secret: String = tx.query_row(
+                    "SELECT value FROM quota_settings WHERE key='secret'",
+                    [],
+                    |r| r.get(0),
+                )?;
+                let limits = quota_limits(&tx, &peer_key(&secret, address))?;
+                tx.commit()?;
+                return Ok(StrokeSave::Saved(record, limits));
+            }
+            let secret: String = tx.query_row(
+                "SELECT value FROM quota_settings WHERE key='secret'",
+                [],
+                |r| r.get(0),
+            )?;
+            let key = peer_key(&secret, address);
+            let existing_owner: Option<Option<String>> = tx
+                .query_row(
+                    "SELECT visitor FROM drawings WHERE id=?",
+                    [&drawing_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match existing_owner {
+                Some(owner) if owner.as_deref() != (!visitor.is_empty()).then_some(visitor.as_str()) => {
+                    return Ok(StrokeSave::DrawingConflict);
+                }
+                Some(_) => {
+                    tx.execute(
+                        "UPDATE drawings SET updated=?,revision=revision+1,moderation_reviewed=0 WHERE id=?",
+                        params![timestamp, drawing_id],
+                    )?;
+                }
+                None => {
+                    tx.execute(
+                        "INSERT INTO drawings(id,visitor,created,updated,revision) VALUES(?,?,?,?,1)",
+                        params![drawing_id, (!visitor.is_empty()).then_some(visitor.as_str()), timestamp, timestamp],
+                    )?;
+                }
+            }
+            if !visitor.is_empty() {
+                tx.execute(
+                    "INSERT INTO visitor_profiles(visitor,first_seen,last_seen) VALUES(?,?,?)
+                     ON CONFLICT(visitor) DO UPDATE SET last_seen=MAX(last_seen,excluded.last_seen)",
+                    params![visitor, timestamp, timestamp],
+                )?;
+            }
+            let points = serde_json::to_string(&stroke.points)?;
+            tx.execute(
+                "INSERT INTO strokes(id,drawing_id,color,width,points,approved,auto_status) VALUES(?,?,?,?,?,1,'not_required')",
+                params![stroke.id, drawing_id, stroke.color, stroke.width, points],
+            )?;
+            let seq = tx.last_insert_rowid();
+            let drawing_seq: i64 = tx.query_row(
+                "SELECT seq FROM drawings WHERE id=?",
+                [&drawing_id],
+                |row| row.get(0),
+            )?;
+            if !visitor.is_empty() {
+                tx.execute(
+                    "INSERT OR IGNORE INTO submissions(kind,item,visitor,created) VALUES('strokes',?,?,?)",
+                    params![seq.to_string(), visitor, timestamp],
+                )?;
+            }
+            if ai_enabled {
+                tx.execute(
+                    "INSERT INTO ai_queue(kind,item_id,state,created) VALUES('drawings',?,'queued',?)
+                     ON CONFLICT(kind,item_id) DO UPDATE SET
+                       state=CASE WHEN ai_queue.state='running' THEN 'running' ELSE 'queued' END,
+                       created=excluded.created,
+                       started=CASE WHEN ai_queue.state='running' THEN ai_queue.started ELSE NULL END",
+                    params![drawing_seq, timestamp],
+                )?;
+            }
+            let limits = quota_limits(&tx, &key)?;
+            let record = load_stroke_by_seq(&tx, seq)?.expect("inserted stroke");
+            tx.commit()?;
+            Ok(StrokeSave::Saved(record, limits))
+        })
+        .await;
     match result {
         Ok(StrokeSave::Saved(stroke, limits)) => {
             let mut body = serde_json::to_value(stroke).unwrap_or_default();
@@ -543,6 +715,10 @@ pub async fn post_stroke(
             }
             json_response(StatusCode::CREATED, body)
         }
+        Ok(StrokeSave::DrawingConflict) => api_error(
+            StatusCode::CONFLICT,
+            "Этот рисунок принадлежит другому профилю браузера",
+        ),
         Err(_) => api_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Не удалось сохранить штрих",
@@ -726,4 +902,149 @@ where
         .query_map(values, map)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
+}
+
+const MEI_MARKET_OPENING_PRICE: i64 = 1000;
+const MEI_MARKET_MIN_PRICE: i64 = 1;
+const MEI_MARKET_MAX_PRICE: i64 = 1_000_000_000;
+const MEI_MARKET_COOLDOWN_SECONDS: i64 = 3;
+
+#[derive(Deserialize)]
+struct MeiMarketTradeRequest {
+    side: String,
+    quantity: i64,
+}
+
+enum MeiMarketTradeResult {
+    Updated(Value),
+    Cooldown(i64),
+}
+
+fn mei_market_snapshot(connection: &rusqlite::Connection) -> anyhow::Result<Value> {
+    let (price, updated): (i64, i64) = connection.query_row(
+        "SELECT price,updated FROM mei_market_state WHERE id=1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let ticks = collect(
+        connection,
+        "SELECT price,change,side,quantity,created FROM mei_market_ticks ORDER BY seq DESC LIMIT 60",
+        [],
+        |row| {
+            Ok(json!({
+                "price": row.get::<_, i64>(0)?,
+                "change": row.get::<_, i64>(1)?,
+                "side": row.get::<_, String>(2)?,
+                "quantity": row.get::<_, i64>(3)?,
+                "created": row.get::<_, i64>(4)?
+            }))
+        },
+    )?;
+    Ok(json!({
+        "price": price,
+        "openingPrice": MEI_MARKET_OPENING_PRICE,
+        "updatedAt": updated,
+        "ticks": ticks
+    }))
+}
+
+pub async fn mei_market(State(state): State<AppState>) -> Response {
+    match state.db.call(|connection| mei_market_snapshot(connection)).await {
+        Ok(snapshot) => json_response(StatusCode::OK, snapshot),
+        Err(_) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "Не удалось загрузить общий курс Мей-Мей"),
+    }
+}
+
+pub async fn trade_mei_market(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+        == Some("cross-site")
+        || !same_origin(&headers)
+    {
+        return api_error(StatusCode::FORBIDDEN, "Недопустимый источник запроса");
+    }
+    if body.len() > 2048 {
+        return api_error(StatusCode::PAYLOAD_TOO_LARGE, "Слишком большой запрос");
+    }
+    let request: MeiMarketTradeRequest = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(_) => return api_error(StatusCode::BAD_REQUEST, "Не удалось прочитать действие рынка"),
+    };
+    if !matches!(request.side.as_str(), "buy" | "sell") || !(1..=5).contains(&request.quantity) {
+        return api_error(StatusCode::BAD_REQUEST, "Выбери покупку или продажу и от 1 до 5 виртуальных акций");
+    }
+
+    let address = client_ip(peer, &headers, &state.config.trusted_proxies);
+    let visitor = cookie(&headers, "frokla_visitor")
+        .filter(|value| value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let side = request.side;
+    let quantity = request.quantity;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let result = state.db.call(move |connection| {
+        let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let secret: String = transaction.query_row(
+            "SELECT value FROM quota_settings WHERE key='secret'",
+            [],
+            |row| row.get(0),
+        )?;
+        let actor = if let Some(visitor) = visitor {
+            hex::encode(Sha256::digest(format!("{secret}:{visitor}").as_bytes()))
+        } else {
+            peer_key(&secret, address)
+        };
+        let last_action: Option<i64> = transaction
+            .query_row("SELECT last_action FROM mei_market_users WHERE actor=?", [&actor], |row| row.get(0))
+            .optional()?;
+        if let Some(last_action) = last_action {
+            let elapsed = timestamp.saturating_sub(last_action);
+            if elapsed < MEI_MARKET_COOLDOWN_SECONDS {
+                return Ok(MeiMarketTradeResult::Cooldown(MEI_MARKET_COOLDOWN_SECONDS - elapsed));
+            }
+        }
+
+        let price: i64 = transaction.query_row("SELECT price FROM mei_market_state WHERE id=1", [], |row| row.get(0))?;
+        let magnitude = ((price as f64 * quantity as f64 * 0.001).round() as i64).max(1);
+        let next_price = if side == "buy" {
+            price.saturating_add(magnitude).min(MEI_MARKET_MAX_PRICE)
+        } else {
+            price.saturating_sub(magnitude).max(MEI_MARKET_MIN_PRICE)
+        };
+        let actual_change = next_price - price;
+        transaction.execute("UPDATE mei_market_state SET price=?,updated=? WHERE id=1", params![next_price, timestamp])?;
+        transaction.execute(
+            "INSERT INTO mei_market_users(actor,last_action) VALUES(?,?) ON CONFLICT(actor) DO UPDATE SET last_action=excluded.last_action",
+            params![actor, timestamp],
+        )?;
+        transaction.execute(
+            "INSERT INTO mei_market_ticks(price,change,side,quantity,created) VALUES(?,?,?,?,?)",
+            params![next_price, actual_change, side, quantity, timestamp],
+        )?;
+        transaction.execute(
+            "DELETE FROM mei_market_ticks WHERE seq NOT IN (SELECT seq FROM mei_market_ticks ORDER BY seq DESC LIMIT 60)",
+            [],
+        )?;
+        let snapshot = mei_market_snapshot(&transaction)?;
+        transaction.commit()?;
+        Ok(MeiMarketTradeResult::Updated(snapshot))
+    }).await;
+
+    match result {
+        Ok(MeiMarketTradeResult::Updated(snapshot)) => json_response(StatusCode::OK, json!({"ok":true,"market":snapshot})),
+        Ok(MeiMarketTradeResult::Cooldown(seconds)) => {
+            let mut response = json_response(StatusCode::TOO_MANY_REQUESTS, json!({"error":"Подожди немного перед следующим изменением курса","retryAfter":seconds}));
+            response.headers_mut().insert(axum::http::header::RETRY_AFTER, seconds.to_string().parse().unwrap_or_else(|_| axum::http::HeaderValue::from_static("3")));
+            response
+        }
+        Err(_) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "Не удалось изменить общий курс Мей-Мей"),
+    }
 }

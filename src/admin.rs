@@ -12,7 +12,7 @@ use axum::{
     Json,
 };
 use pbkdf2::pbkdf2_hmac;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -64,6 +64,10 @@ struct LoginBody {
 struct ModerateBody {
     kind: String,
     id: i64,
+    #[serde(default, rename = "drawingId")]
+    drawing_id: Option<String>,
+    #[serde(default)]
+    visitor: Option<String>,
     action: String,
 }
 
@@ -343,16 +347,82 @@ async fn data(state: &AppState, session: &Session) -> Response {
             for row in statement.query_map([], |r| Ok(json!({"seq":r.get::<_,i64>(0)?,"nickname":r.get::<_,String>(1)?,"message":r.get::<_,String>(2)?,"approved":r.get::<_,i64>(3)?,"featured":r.get::<_,i64>(4)?,"ai_status":r.get::<_,String>(5)?,"ai_score":r.get::<_,f64>(6)?})))? { notes.push(row?); }
         }
         let strokes = {
-            let mut statement = connection.prepare("SELECT seq,id,color,width,points,approved,auto_status,segments FROM strokes ORDER BY seq DESC LIMIT 2000")?;
+            let mut statement = connection.prepare(
+                "SELECT s.seq,s.id,s.color,s.width,s.points,s.approved,s.auto_status,s.segments,
+                        s.drawing_id,d.visitor,d.created,d.updated,
+                        COALESCE((SELECT a.decision FROM ai_reviews a WHERE a.kind='drawings' AND a.item_id=d.seq ORDER BY a.created DESC,a.model_version DESC LIMIT 1),'unavailable'),
+                        COALESCE((SELECT a.score FROM ai_reviews a WHERE a.kind='drawings' AND a.item_id=d.seq ORDER BY a.created DESC,a.model_version DESC LIMIT 1),0)
+                 FROM drawings d JOIN strokes s ON s.drawing_id=d.id
+                 WHERE d.seq IN (SELECT seq FROM drawings ORDER BY updated DESC LIMIT 200)
+                 ORDER BY d.updated DESC,s.seq"
+            )?;
             let mut rows = Vec::new();
-            for row in statement.query_map([], |r| Ok(json!({"seq":r.get::<_,i64>(0)?,"id":r.get::<_,String>(1)?,"color":r.get::<_,String>(2)?,"width":r.get::<_,f64>(3)?,"points":r.get::<_,String>(4)?,"approved":r.get::<_,i64>(5)?,"auto_status":r.get::<_,String>(6)?,"segments":r.get::<_,Option<String>>(7)?})))? { rows.push(row?); }
+            for row in statement.query_map([], |r| {
+                let segments_raw: Option<String> = r.get(7)?;
+                let segments = segments_raw
+                    .map(|raw| {
+                        serde_json::from_str::<Value>(&raw).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })
+                    })
+                    .transpose()?;
+                Ok(json!({
+                    "seq": r.get::<_, i64>(0)?,
+                    "id": r.get::<_, String>(1)?,
+                    "color": r.get::<_, String>(2)?,
+                    "width": r.get::<_, f64>(3)?,
+                    "points": r.get::<_, String>(4)?,
+                    "approved": r.get::<_, i64>(5)?,
+                    "auto_status": r.get::<_, String>(6)?,
+                    "segments": segments,
+                    "drawing_id": r.get::<_, String>(8)?,
+                    "visitor": r.get::<_, Option<String>>(9)?,
+                    "created": r.get::<_, i64>(10)?
+                }))
+            })? {
+                rows.push(row?);
+            }
             rows
         };
+        let drawings = collect_json(
+            connection,
+            "SELECT d.seq,d.id,d.visitor,d.created,d.updated,
+                    CASE WHEN MIN(s.approved)=MAX(s.approved) THEN MIN(s.approved) ELSE 0 END,
+                    COUNT(s.seq),d.moderation_reviewed,
+                    COALESCE((SELECT a.decision FROM ai_reviews a WHERE a.kind='drawings' AND a.item_id=d.seq ORDER BY a.created DESC,a.model_version DESC LIMIT 1),'unavailable'),
+                    COALESCE((SELECT a.score FROM ai_reviews a WHERE a.kind='drawings' AND a.item_id=d.seq ORDER BY a.created DESC,a.model_version DESC LIMIT 1),0)
+             FROM drawings d LEFT JOIN strokes s ON s.drawing_id=d.id
+             GROUP BY d.seq ORDER BY d.updated DESC LIMIT 200",
+            |r| Ok(json!({"seq":r.get::<_,i64>(0)?,"id":r.get::<_,String>(1)?,"visitor":r.get::<_,Option<String>>(2)?,
+                "created":r.get::<_,i64>(3)?,"updated":r.get::<_,i64>(4)?,"approved":r.get::<_,i64>(5)?,
+                "stroke_count":r.get::<_,i64>(6)?,"reviewed":r.get::<_,i64>(7)?,
+                "ai_status":r.get::<_,String>(8)?,"ai_score":r.get::<_,f64>(9)?})),
+        )?;
+        let profiles = collect_json(
+            connection,
+            "SELECT p.visitor,COUNT(DISTINCT d.seq),p.first_seen,p.last_seen,
+                    (SELECT v.ip FROM visits v WHERE v.visitor=p.visitor AND v.ip IS NOT NULL ORDER BY v.id DESC LIMIT 1)
+             FROM visitor_profiles p LEFT JOIN drawings d ON d.visitor=p.visitor
+             GROUP BY p.visitor ORDER BY p.last_seen DESC LIMIT 200",
+            |r| {
+                Ok(json!({
+                    "visitor": r.get::<_, String>(0)?,
+                    "drawing_count": r.get::<_, i64>(1)?,
+                    "first_seen": r.get::<_, i64>(2)?,
+                    "last_seen": r.get::<_, i64>(3)?,
+                    "ip": r.get::<_, Option<String>>(4)?
+                }))
+            },
+        )?;
         let visits = collect_json(connection, "SELECT visitor,created,device,language,source,ip FROM visits ORDER BY id DESC LIMIT 200", |r| Ok(json!({"visitor":r.get::<_,String>(0)?,"created":r.get::<_,i64>(1)?,"device":r.get::<_,String>(2)?,"language":r.get::<_,String>(3)?,"source":r.get::<_,String>(4)?,"ip":r.get::<_,Option<String>>(5)?})))?;
         let stats = connection.query_row("SELECT COUNT(*) views,COUNT(DISTINCT visitor) visitors FROM visits", [], |r| Ok(json!({"views":r.get::<_,i64>(0)?,"visitors":r.get::<_,i64>(1)?})))?;
         let days = collect_json(connection, "SELECT date(created,'unixepoch') day,COUNT(*) views FROM visits GROUP BY day ORDER BY day DESC LIMIT 30", |r| Ok(json!({"day":r.get::<_,String>(0)?,"views":r.get::<_,i64>(1)?})))?;
         let submissions = collect_json(connection, "SELECT kind,item,visitor,created FROM submissions ORDER BY created DESC LIMIT 500", |r| Ok(json!({"kind":r.get::<_,String>(0)?,"item":r.get::<_,String>(1)?,"visitor":r.get::<_,String>(2)?,"created":r.get::<_,i64>(3)?})))?;
-        Ok(json!({"csrf":csrf,"notes":notes,"strokes":strokes,"visits":visits,"stats":stats,"days":days,"submissions":submissions}))
+        Ok(json!({"csrf":csrf,"notes":notes,"strokes":strokes,"drawings":drawings,"profiles":profiles,"visits":visits,"stats":stats,"days":days,"submissions":submissions}))
     }).await;
     match result {
         Ok(value) => response(StatusCode::OK, value),
@@ -386,10 +456,36 @@ async fn moderate(state: &AppState, body: &[u8]) -> Response {
         Ok(v) => v,
         Err(_) => return json_error(StatusCode::BAD_REQUEST, "Неверный запрос"),
     };
-    if !["notes", "strokes"].contains(&request.kind.as_str())
-        || !["approve", "reject", "feature", "unfeature"].contains(&request.action.as_str())
+    if !["notes", "strokes", "drawings"].contains(&request.kind.as_str())
+        || ![
+            "approve",
+            "reject",
+            "feature",
+            "unfeature",
+            "delete",
+            "delete_profile",
+        ]
+        .contains(&request.action.as_str())
         || (request.kind == "strokes"
-            && ["feature", "unfeature"].contains(&request.action.as_str()))
+            && (["feature", "unfeature"].contains(&request.action.as_str())
+                || (request.action == "delete"
+                    && (request.id <= 0
+                        || request
+                            .drawing_id
+                            .as_deref()
+                            .is_none_or(|id| id.is_empty() || id.len() > 128)))))
+        || (request.kind == "notes" && request.action == "delete")
+        || (request.kind == "drawings"
+            && (["feature", "unfeature"].contains(&request.action.as_str())
+                || (request.action == "delete_profile"
+                    && request.visitor.as_deref().is_none_or(|visitor| {
+                        visitor.len() != 32 || !visitor.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    }))
+                || (request.action != "delete_profile"
+                    && request
+                        .drawing_id
+                        .as_deref()
+                        .is_none_or(|id| id.is_empty() || id.len() > 128))))
     {
         return json_error(StatusCode::BAD_REQUEST, "Неверный запрос");
     }
@@ -398,6 +494,64 @@ async fn moderate(state: &AppState, body: &[u8]) -> Response {
         .call(move |connection| {
             let transaction = connection.transaction()?;
             let updated = match (request.kind.as_str(), request.action.as_str()) {
+                ("strokes", "delete") => {
+                    let drawing_id = request.drawing_id.as_deref().unwrap_or_default();
+                    let drawing_seq: Option<i64> = transaction
+                        .query_row(
+                            "SELECT d.seq FROM drawings d JOIN strokes s ON s.drawing_id=d.id
+                             WHERE s.seq=? AND d.id=?",
+                            params![request.id, drawing_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    let Some(drawing_seq) = drawing_seq else {
+                        anyhow::bail!("not found")
+                    };
+                    let stroke_item = request.id.to_string();
+                    transaction.execute(
+                        "DELETE FROM submissions WHERE kind='strokes' AND item=?",
+                        [&stroke_item],
+                    )?;
+                    let deleted = transaction.execute(
+                        "DELETE FROM strokes WHERE seq=? AND drawing_id=?",
+                        params![request.id, drawing_id],
+                    )?;
+                    let remaining: i64 = transaction.query_row(
+                        "SELECT COUNT(*) FROM strokes WHERE drawing_id=?",
+                        [drawing_id],
+                        |row| row.get(0),
+                    )?;
+                    if remaining == 0 {
+                        transaction.execute(
+                            "DELETE FROM ai_queue WHERE kind='drawings' AND item_id=?",
+                            [drawing_seq],
+                        )?;
+                        transaction.execute(
+                            "DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?",
+                            [drawing_seq],
+                        )?;
+                        transaction.execute("DELETE FROM drawings WHERE seq=?", [drawing_seq])?;
+                        deleted.saturating_add(1)
+                    } else {
+                        transaction.execute(
+                            "UPDATE drawings SET updated=?,revision=revision+1,moderation_reviewed=0 WHERE seq=?",
+                            params![now(), drawing_seq],
+                        )?;
+                        transaction.execute(
+                            "DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?",
+                            [drawing_seq],
+                        )?;
+                        let timestamp = now();
+                        transaction.execute(
+                            "INSERT INTO ai_queue(kind,item_id,created,state,started)
+                             VALUES('drawings',?,?,'queued',NULL)
+                             ON CONFLICT(kind,item_id) DO UPDATE SET
+                               created=excluded.created,state='queued',started=NULL",
+                            params![drawing_seq, timestamp],
+                        )?;
+                        deleted
+                    }
+                }
                 ("notes", "feature") => transaction.execute(
                     "UPDATE notes SET featured=1,approved=1 WHERE seq=?",
                     [request.id],
@@ -414,9 +568,66 @@ async fn moderate(state: &AppState, body: &[u8]) -> Response {
                     [request.id],
                 )?,
                 ("strokes", "approve") => transaction
-                    .execute("UPDATE strokes SET approved=1 WHERE seq=?", [request.id])?,
+                    .execute("UPDATE strokes SET approved=1,moderation_reviewed=1 WHERE seq=?", [request.id])?,
                 ("strokes", "reject") => transaction
-                    .execute("UPDATE strokes SET approved=-1 WHERE seq=?", [request.id])?,
+                    .execute("UPDATE strokes SET approved=-1,moderation_reviewed=1 WHERE seq=?", [request.id])?,
+                ("drawings", "approve") | ("drawings", "reject") => {
+                    let drawing_id = request.drawing_id.as_deref().unwrap_or_default();
+                    let drawing_seq: Option<i64> = transaction
+                        .query_row("SELECT seq FROM drawings WHERE id=?", [drawing_id], |row| row.get(0))
+                        .optional()?;
+                    let Some(drawing_seq) = drawing_seq else { anyhow::bail!("not found") };
+                    let approved = if request.action == "approve" { 1 } else { -1 };
+                    transaction.execute(
+                        "UPDATE drawings SET moderation_reviewed=1 WHERE seq=?",
+                        [drawing_seq],
+                    )?;
+                    transaction.execute(
+                        "UPDATE strokes SET approved=?,moderation_reviewed=1 WHERE drawing_id=?",
+                        params![approved, drawing_id],
+                    )?
+                }
+                ("drawings", "delete") => {
+                    let drawing_id = request.drawing_id.as_deref().unwrap_or_default();
+                    let drawing_seq: Option<i64> = transaction
+                        .query_row("SELECT seq FROM drawings WHERE id=?", [drawing_id], |row| row.get(0))
+                        .optional()?;
+                    let Some(drawing_seq) = drawing_seq else { anyhow::bail!("not found") };
+                    transaction.execute("DELETE FROM ai_queue WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                    transaction.execute("DELETE FROM ai_reviews WHERE kind='drawings' AND item_id=?", [drawing_seq])?;
+                    transaction.execute(
+                        "DELETE FROM submissions WHERE kind='strokes' AND item IN (SELECT CAST(seq AS TEXT) FROM strokes WHERE drawing_id=?)",
+                        [drawing_id],
+                    )?;
+                    let deleted = transaction.execute("DELETE FROM strokes WHERE drawing_id=?", [drawing_id])?;
+                    transaction.execute("DELETE FROM drawings WHERE seq=?", [drawing_seq])?;
+                    deleted.saturating_add(1)
+                }
+                ("drawings", "delete_profile") => {
+                    let visitor = request.visitor.as_deref().unwrap_or_default();
+                    transaction.execute(
+                        "DELETE FROM ai_queue WHERE kind='drawings' AND item_id IN
+                           (SELECT seq FROM drawings WHERE visitor=?)",
+                        [visitor],
+                    )?;
+                    transaction.execute(
+                        "DELETE FROM ai_reviews WHERE kind='drawings' AND item_id IN
+                           (SELECT seq FROM drawings WHERE visitor=?)",
+                        [visitor],
+                    )?;
+                    transaction.execute(
+                        "DELETE FROM submissions WHERE kind='strokes' AND item IN
+                           (SELECT CAST(s.seq AS TEXT) FROM strokes s
+                            JOIN drawings d ON d.id=s.drawing_id WHERE d.visitor=?)",
+                        [visitor],
+                    )?;
+                    transaction.execute(
+                        "DELETE FROM strokes WHERE drawing_id IN
+                           (SELECT id FROM drawings WHERE visitor=?)",
+                        [visitor],
+                    )?;
+                    transaction.execute("DELETE FROM drawings WHERE visitor=?", [visitor])?
+                }
                 _ => 0,
             };
             if updated == 0 {
