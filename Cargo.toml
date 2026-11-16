@@ -1,0 +1,42 @@
+[package]
+name = "frokla"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+default-run = "frokla"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["http1", "json", "tokio"] }
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+hex = "0.4"
+fs2 = "0.4"
+hmac = "0.12"
+ipnet = "2"
+llama-cpp-2 = { version = "=0.1.161", default-features = false }
+ort = { version = "=2.0.0-rc.10", features = ["load-dynamic"] }
+pbkdf2 = "0.12"
+rand = "0.8"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rusqlite = { version = "0.40", features = ["backup", "bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2.6"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tower-http = { version = "0.6", features = ["fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

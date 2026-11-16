@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b1423" />
     <meta name="description" content="Тихий зимний уголок Тимы: немного обо мне, Мей-Мей и гостевая книга." />
-    <title>Тима — следы на снегу</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="script.js" defer></script>
+    <title>Frokla</title>
+    <link rel="stylesheet" href="styles.css" /><link rel="stylesheet" href="CircularGallery.css" /><link rel="stylesheet" href="PixelSnow.css" /><link rel="stylesheet" href="MiniApps.css" />
+    <script src="local.js" defer></script><script src="PixelSnow.js" defer></script><script src="MeiPixelScene.js" defer></script><script src="HolidayCountdown.js" defer></script><script src="SnowVacuum.js" defer></script><script src="script.js" defer></script><script src="MiniApps.js" defer></script>
+    <script src="canvas.js?v=unlimited-ink-20261116" defer></script><script src="InkPalette.js" defer></script><script src="CircularGallery.js" defer></script><script src="tree.js" defer></script><script src="tree-spin.js" defer></script><script src="mei.js" defer></script><script src="nickname.js" defer></script><script src="VerityVisit.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">К содержанию</a>
@@ -15,32 +16,30 @@
     <div class="page-glow" aria-hidden="true"></div>
 
     <header class="site-header">
-      <a class="brand" href="#home" aria-label="Тима — на главную">
+      <a class="brand" href="#home" aria-label="Frokla — на главную">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" fill="none"><path d="M16 3v26M4.75 9.5l22.5 13M4.75 22.5l22.5-13M12.5 5l3.5 4 3.5-4M12.5 27l3.5-4 3.5 4M5.5 13l5.5-.5-.5-5.5M26.5 19l-5.5.5.5 5.5M5.5 19l5.5.5-.5 5.5M26.5 13l-5.5-.5.5-5.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </span>
-        <span class="brand-name">тима<span class="brand-period">.</span></span>
+        <span class="brand-name">Frokla</span>
       </a>
-
-      <nav class="main-nav" aria-label="Основная навигация">
-        <a href="#about">Обо мне</a>
-        <a href="#guestbook">Следы на снегу</a>
-      </nav>
-
-      <a class="header-note" href="#guestbook"><span class="status-dot" aria-hidden="true"></span>Оставить записку</a>
+      <details class="mini-service-menu" id="mini-service-menu">
+        <summary><span aria-hidden="true">✧</span> Мини-сервисы <b>15</b></summary>
+        <div class="mini-service-panel"><div class="mini-service-heading"><strong>Мини-сервисы</strong><span>Инструменты и игры в одном месте</span></div><div class="mini-service-grid">
+          <button type="button" data-mini-app="assistant"><span>✦</span> ИИ-помощник</button><button type="button" data-mini-app="lamp"><span>☼</span> Фонарик</button><button type="button" data-mini-app="habits"><span>✓</span> Трекер привычек</button><button type="button" data-mini-app="telegram"><span>➤</span> Telegram-бот</button><button type="button" data-mini-app="snowcatch"><span>❄</span> Поймай снежинку</button>
+          <button type="button" data-mini-app="focus"><span>◷</span> Фокус-таймер</button><button type="button" data-mini-app="checklist"><span>☷</span> Список дел</button><button type="button" data-mini-app="mood"><span>☻</span> Дневник настроения</button><button type="button" data-mini-app="countdown"><span>⌛</span> До Нового года</button><button type="button" data-mini-app="password"><span>⌑</span> Генератор паролей</button>
+          <button type="button" data-mini-app="calculator"><span>＋</span> Калькулятор</button><button type="button" data-mini-app="texttools"><span>Aa</span> Инструменты текста</button><button type="button" data-mini-app="converter"><span>↔</span> Конвертер величин</button><button type="button" data-mini-app="notes"><span>▤</span> Быстрые заметки</button><button type="button" data-mini-app="budget"><span>₽</span> Учёт расходов</button>
+        </div></div>
+      </details>
     </header>
 
-    <main id="main">
+    <main id="main"><div class="holiday-room pixel-holiday" aria-hidden="true"><canvas id="mei-pixel-art" width="400" height="240"></canvas></div>
       <section class="hero section-wrap" id="home" aria-labelledby="hero-title">
         <div class="hero-copy reveal">
-          <p class="eyebrow"><span class="eyebrow-line"></span>Тихий уголок в сети <span class="eyebrow-year">· 2026</span></p>
-          <h1 id="hero-title">Привет,<br />я <span class="title-accent">Тима</span><span class="title-comma">.</span></h1>
-          <p class="hero-lede">Здесь можно немного замедлиться.<br class="desktop-break" /> Вдохнуть морозный воздух и остаться на пару минут.</p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="#about">Заглянуть внутрь <span aria-hidden="true">↘</span></a>
-            <a class="text-link" href="#guestbook">Оставить след <span aria-hidden="true">→</span></a>
-          </div>
-          <div class="hero-footnote"><span class="tiny-star" aria-hidden="true">✳</span><span>Снаружи холодно.<br /><strong>Здесь тебе рады.</strong></span></div>
+          
+          <h1 id="hero-title">Frokla</h1>
+          
+          <p class="holiday-intro"><span id="new-year-countdown"></span><span id="holiday-day"></span></p><div class="pixel-left-stars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          
         </div>
 
         <div class="hero-visual reveal" aria-label="Мей-Мей">
@@ -49,90 +48,77 @@
           <span class="visual-index" aria-hidden="true">ПУШИСТОЕ ПРИВЕТСТВИЕ <span>01 — 03</span></span>
           <figure class="portrait-float">
             <div class="portrait-frame" id="portrait-frame">
-              <img class="portrait-photo" src="mei-mei.jpg" alt="Снежный барс Мей-Мей протягивает лапу" width="960" height="1280" />
+              <img class="portrait-photo" src="mei-mei.png" alt="Снежный барс Мей-Мей протягивает лапу" width="1080" height="1448" />
               <span class="photo-stamp" aria-hidden="true">мей<br />мей</span>
             </div>
-            <figcaption class="portrait-caption">
-              <span class="caption-icon" aria-hidden="true">✳</span>
-              <span><strong>Мей-Мей</strong><small>Хранительница этого места</small></span>
-              <span class="caption-sparkle" aria-hidden="true">✦</span>
-            </figcaption>
+            
           </figure>
           <span class="visual-side-note" aria-hidden="true">ТИШЕ · ТЕПЛЕЕ · БЛИЖЕ</span>
         </div>
-        <a class="scroll-cue" href="#about" aria-label="Прокрутить к разделу «Обо мне»"><span class="scroll-cue-line"></span><span>ЛИСТАЙ НЕ СПЕША</span></a>
-      </section>
-
-      <section class="about section-wrap" id="about" aria-labelledby="about-title">
-        <div class="section-topline"><span>01 <i>—</i> ОТКРЫТКА</span><span class="section-topline-right">НЕСКОЛЬКО СЛОВ О ТОМ, ЧТО РЯДОМ</span></div>
-        <div class="about-grid">
-          <div class="section-title-block reveal">
-            <p class="eyebrow"><span class="eyebrow-line"></span>Обо мне</p>
-            <h2 id="about-title">Приятно<br />познакомиться<span class="title-comma">.</span></h2>
-            <div class="title-flake" aria-hidden="true">✳</div>
-          </div>
-          <div class="about-story reveal">
-            <p class="story-lead">Я Тима. Мне по душе вещи, которые помогают выдохнуть: снежные вечера, негромкая музыка и разговоры без спешки.</p>
-            <p>Этот сайт — маленькая пауза среди обычного дня. Здесь живёт Мей-Мей, собираются добрые слова и остаётся немного места для тишины.</p>
-            <div class="interest-list" aria-label="Мои маленькие радости">
-              <div class="interest-item"><span class="interest-number">01</span><span>Хрустящий снег<br /><small>и длинные прогулки</small></span><span class="interest-icon" aria-hidden="true">❄</span></div>
-              <div class="interest-item"><span class="interest-number">02</span><span>Тихие вечера<br /><small>с тёплым светом</small></span><span class="interest-icon" aria-hidden="true">☾</span></div>
-              <div class="interest-item"><span class="interest-number">03</span><span>Новые истории<br /><small>и добрые люди</small></span><span class="interest-icon" aria-hidden="true">✳</span></div>
-            </div>
-          </div>
-        </div>
-        <div class="breath-note reveal"><span class="breath-symbol" aria-hidden="true">“</span><p>Тишина тоже умеет говорить.</p><span class="breath-rule" aria-hidden="true"></span><span class="breath-label">ЗИМНЯЯ ЗАМЕТКА № 01</span></div>
+        
       </section>
 
       <section class="guestbook section-wrap" id="guestbook" aria-labelledby="guestbook-title">
-        <div class="section-topline"><span>02 <i>—</i> ГОСТЕВАЯ КНИГА</span><span class="section-topline-right">ПУСТЬ ОСТАНЕТСЯ ТЁПЛЫЙ СЛЕД</span></div>
+        
         <div class="guestbook-heading reveal">
           <div>
-            <p class="eyebrow"><span class="eyebrow-line"></span>Следы на снегу</p>
-            <h2 id="guestbook-title">Оставь пару<br />добрых слов<span class="title-comma">.</span></h2>
+            <p class="eyebrow"><span class="eyebrow-line"></span>Послания</p>
+            <h2 id="guestbook-title">Послания</h2>
           </div>
-          <p class="guestbook-intro">Напиши что-нибудь от души — пусть это будет маленькая записка, которую приятно найти в зимнем кармане.</p>
+          
         </div>
 
         <div class="guestbook-layout">
-          <div class="guestbook-empty reveal">
-            <div class="empty-snowflake" aria-hidden="true">✳</div>
-            <span class="empty-overline">ПОКА ЗДЕСЬ ТИХО</span>
-            <h3>Снег ещё чистый</h3>
-            <p>Первая записка появится здесь после подключения отправки и моего одобрения.</p>
-            <div class="empty-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-          </div>
-
-          <form class="note-form reveal" id="note-form" novalidate>
-            <div class="form-heading"><span class="form-heading-icon" aria-hidden="true">✳</span><div><strong>Твоя записка</strong><span>Коротко — тоже тепло</span></div></div>
-            <label class="field-label" for="nickname">Как тебя называть?</label>
+          <div class="tree-panel"><h3>Наша ёлка</h3><div class="christmas-tree" id="christmas-tree"><span class="tree-star">✦</span><div class="tree-leaves"></div><div class="tree-trunk"></div><div id="ornaments"></div></div><p id="tree-status">Каждое послание — новый шарик.</p><div id="approved-notes"></div></div><form class="note-form reveal" id="note-form" novalidate>
+            <div class="form-heading"><span class="form-heading-icon" aria-hidden="true">✳</span><div><strong>Твоё послание</strong></div></div>
+            <div class="nickname-heading"><label class="field-label" for="nickname">Как тебя называть?</label><button type="button" id="random-nickname">Придумать ник ↻</button></div>
             <div class="input-wrap">
               <input id="nickname" name="nickname" type="text" maxlength="24" autocomplete="nickname" placeholder="Например, Снежинка" aria-describedby="nickname-count nickname-error" />
               <span class="counter" id="nickname-count">0 <i>/</i> 24</span>
             </div>
             <p class="field-error" id="nickname-error" aria-live="polite"></p>
 
-            <label class="field-label message-label" for="message">Тёплые слова</label>
+            <label class="field-label message-label" for="message">Сообщение</label>
             <div class="input-wrap textarea-wrap">
-              <textarea id="message" name="message" rows="4" maxlength="120" placeholder="Пусть в этом уголке останется немного тепла..." aria-describedby="message-help message-count message-error"></textarea>
+              <textarea id="message" name="message" rows="4" maxlength="120" placeholder="Твоё послание…" aria-describedby="message-help message-count message-error"></textarea>
               <span class="counter" id="message-count">0 <i>/</i> 120</span>
             </div>
             <div class="field-meta"><span id="message-help">Без ссылок и картинок, пожалуйста.</span><span class="field-error" id="message-error" aria-live="polite"></span></div>
 
-            <div class="moderation-notice" role="note"><span class="notice-lock" aria-hidden="true">◇</span><span><strong>Записки публикуются после моего одобрения.</strong><small>Сейчас форма не подключена к серверу. Текст не отправляется и не сохраняется.</small></span></div>
-            <button class="button button-submit" type="submit">Проверить сообщение <span aria-hidden="true">↗</span></button>
+            
+            <button class="button button-submit" type="submit">Отправить послание <span aria-hidden="true">↗</span></button>
             <p class="form-result" id="form-result" aria-live="polite"></p>
           </form>
         </div>
       </section>
+
+
+      <section id="drawing" class="drawing section-wrap" aria-labelledby="drawing-title">
+        <p class="eyebrow">ОБЩИЙ ХОЛСТ</p>
+        <h2 id="drawing-title">Холст</h2>
+        <p>Рисунки сразу появляются на общем холсте.</p>
+        <p class="drawing-policy">Без оскорблений, угроз, личных данных и запрещённого контента.</p><div class="drawing-tools"><label>Цвет <input id="ink" type="color" value="#a9d9ff"></label><label><span id="brush-label">Кисть</span> <input id="brush" type="range" min="2" max="28" value="5"></label><button id="canvas-pan" type="button" aria-pressed="false">Режим: рисование</button><button id="canvas-eraser" type="button" aria-pressed="false" disabled>Ластик своих рисунков</button><button id="fullscreen-art" type="button">На весь экран ↗</button></div>
+        <div class="canvas-viewport"><canvas id="drawing-board" width="4800" height="2800" aria-label="Общий холст. Рисуйте мышью или пальцем."></canvas></div>
+        <p id="drawing-status" role="status">Подключаемся к общему холсту…</p>
+      </section>
     </main>
 
-    <footer class="site-footer section-wrap">
-      <a class="footer-brand" href="#home">тима<span>.</span></a>
-      <p>Пусть дорога домой будет светлой.</p>
-      <div class="footer-right"><span>СОБРАНО С ТЕПЛОМ</span><a href="#home" aria-label="Вернуться наверх">↑</a></div>
+    <dialog class="mini-app-dialog" id="mini-app-dialog" aria-labelledby="mini-app-title">
+      <div class="mini-app-dialog-head"><div><span id="mini-app-dialog-icon" aria-hidden="true">✦</span><h2 id="mini-app-title">Мини-приложение</h2></div><button type="button" class="mini-app-close" data-mini-close aria-label="Закрыть">×</button></div>
+      <div class="mini-app-content" id="mini-app-content"></div>
+    </dialog>
+    <dialog class="screen-lamp-overlay" id="screen-lamp" aria-label="Фонарик включён"><div class="screen-lamp-controls"><label for="screen-lamp-brightness">Яркость</label><input id="screen-lamp-brightness" type="range" min="20" max="100" value="100"><button id="screen-lamp-off" type="button">Выключить фонарик</button></div></dialog>
+
+    <section class="best-snow section-wrap"><h2>Послания</h2><div id="best-snowflakes"></div></section><section class="mei-goodnight section-wrap" aria-labelledby="mei-goodnight-title">
+      <div class="mei-goodnight-art"><img src="mini-mei-holiday.png" alt="Новогодний Мей-Мей" loading="lazy" width="240" height="300"><span aria-hidden="true">✦</span></div>
+      <div class="mei-goodnight-copy"><p class="mei-signature">Лапка на удачу</p><h2 id="mei-goodnight-title">Пусть у тебя всё сбудется.</h2><p>Мей-Мей уже загадал тебе тёплый год.<br>Заглядывай за настроением — он будет ждать.</p><a href="#home" class="mei-return">Ещё раз к Мей-Мей <span aria-hidden="true">↗</span></a></div>
+    </section><footer class="site-footer section-wrap">
+      <a class="footer-brand" href="#home">Frokla<span>.</span></a>
+      <p>Frokla · 2026</p>
+      
     </footer>
 
-    <button class="snow-toggle" id="snow-toggle" type="button" aria-label="Приостановить снег" aria-pressed="false"><span class="toggle-flake" aria-hidden="true">✳</span><span class="toggle-copy">Снег идёт</span><span class="toggle-indicator" aria-hidden="true"></span></button>
-  </body>
+    
+    
+  <section hidden class="snow-settings section-wrap" aria-labelledby="weather-title"><h2 id="weather-title">Снег</h2><div class="weather-controls"><label>Обилие <input id="snow-density" type="range" min="0" max="100" value="45"><output id="snow-value">45%</output></label><label>Скорость <input id="snow-speed" type="range" min="0" max="5" step="0.1" value="1"></label><label>Размер <input id="snow-size" type="range" min="0.5" max="3" step="0.1" value="1"></label><label>Ветер <input id="snow-wind" type="range" min="-3" max="3" step="0.1" value="0"></label><label>Яркость <input id="snow-brightness" type="range" min="10" max="100" value="50"></label><label>Покачивание <input id="snow-sway" type="range" min="0" max="4" step="0.1" value="1"></label><button class="snow-toggle" id="snow-toggle" type="button" aria-label="Приостановить снег" aria-pressed="false"><span class="toggle-flake" aria-hidden="true">✳</span><span class="toggle-copy">Снег идёт</span><span class="toggle-indicator" aria-hidden="true"></span></button></div></section><div class="mei-entrance" aria-hidden="true"><img src="mei-santa.png" alt=""></div></body>
 </html>

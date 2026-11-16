@@ -4,79 +4,29 @@
   const canvas = document.getElementById("snow");
   const toggle = document.getElementById("snow-toggle");
   const toggleCopy = toggle.querySelector(".toggle-copy");
-  const context = canvas.getContext("2d", { alpha: true });
-  let flakes = [];
-  let frame = 0;
   let paused = motionQuery.matches;
-  let width = 0;
-  let height = 0;
-  let pixelRatio = 1;
-
-  function makeFlakes() {
-    const amount = Math.max(18, Math.min(72, Math.round(width / 17)));
-    flakes = Array.from({ length: amount }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      radius: Math.random() * 1.65 + 0.45,
-      speed: Math.random() * 0.34 + 0.12,
-      drift: Math.random() * 0.32 + 0.08,
-      phase: Math.random() * Math.PI * 2,
-      alpha: Math.random() * 0.42 + 0.16,
-    }));
-  }
-
-  function resize() {
-    if (!context) return;
-    width = window.innerWidth;
-    height = window.innerHeight;
-    pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-    canvas.width = Math.round(width * pixelRatio);
-    canvas.height = Math.round(height * pixelRatio);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    makeFlakes();
-    draw(0, false);
-  }
-
-  function draw(time, move = true) {
-    if (!context) return;
-    context.clearRect(0, 0, width, height);
-    for (const flake of flakes) {
-      if (move) {
-        flake.y += flake.speed;
-        flake.x += Math.sin(time / 1900 + flake.phase) * flake.drift;
-        if (flake.y > height + 5) { flake.y = -5; flake.x = Math.random() * width; }
-        if (flake.x < -5) flake.x = width + 5;
-        if (flake.x > width + 5) flake.x = -5;
-      }
-      context.beginPath();
-      context.fillStyle = `rgba(210, 232, 250, ${flake.alpha})`;
-      context.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-      context.fill();
-    }
-  }
-
-  function animate(time) {
-    if (paused) return;
-    draw(time);
-    frame = window.requestAnimationFrame(animate);
-  }
-
+  const snow = new PixelSnow(canvas, {density: .45, speed: 1, wind: 0, sway: .5, flakeSize: 1, sizeScale: .95, pixelSize: 2, brightness: 1, glow: .7, twinkle: .38, paused});
+  window.froklaSnow = snow;
+  new SnowVacuum(snow);
   function setPaused(value) {
     paused = value;
-    window.cancelAnimationFrame(frame);
+    snow.set({paused});
     toggle.setAttribute("aria-pressed", String(paused));
     toggle.setAttribute("aria-label", paused ? "Возобновить снег" : "Приостановить снег");
     toggleCopy.textContent = paused ? "Снег на паузе" : "Снег идёт";
-    if (!paused) frame = window.requestAnimationFrame(animate);
-    else draw(0, false);
   }
-
+  document.getElementById("snow-density").addEventListener("input", event => {
+    const value = Number(event.target.value);
+    document.getElementById("snow-value").textContent = value + "%";
+    snow.set({density: value / 100});
+  });
+  document.getElementById("snow-speed").addEventListener("input", event => snow.set({speed: Number(event.target.value)}));
+  document.getElementById("snow-size").addEventListener("input", event => snow.set({flakeSize: Math.min(2, Number(event.target.value)), sizeScale: .5 + Number(event.target.value) * .45}));
+  document.getElementById("snow-wind").addEventListener("input", event => snow.set({wind: Number(event.target.value) / 2}));
+  document.getElementById("snow-brightness").addEventListener("input", event => snow.set({brightness: Number(event.target.value) / 50}));
+  document.getElementById("snow-sway").addEventListener("input", event => snow.set({sway: Number(event.target.value) / 2}));
   toggle.addEventListener("click", () => setPaused(!paused));
-  motionQuery.addEventListener("change", (event) => setPaused(event.matches));
-  window.addEventListener("resize", resize, { passive: true });
-  resize();
+  motionQuery.addEventListener("change", event => setPaused(event.matches));
   setPaused(paused);
 
   const portrait = document.getElementById("portrait-frame");
@@ -149,7 +99,7 @@
     formResult.textContent = "";
   });
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     formResult.textContent = "";
     const name = nickname.value.trim();
@@ -164,6 +114,15 @@
       formResult.textContent = "Проверь поля и попробуй ещё раз.";
       return;
     }
-    formResult.textContent = "Проверка пройдена. Записка не отправлена и не сохранена: для модерации нужен подключённый сервер.";
+    const button=form.querySelector('[type="submit"]'); if(button.disabled)return;
+    button.disabled=true;
+    try {
+
+      const response=await window.froklaRequest('/api/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:form.dataset.requestId || (form.dataset.requestId=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')),nickname:name,message:message.value.trim()})});
+      if(!response.ok){const error=await response.json();if(response.status===429){formResult.textContent=error.error;return}throw Error()}
+      await response.json();delete form.dataset.requestId;form.reset();updateCounter(nickname,nicknameCount);updateCounter(message,messageCount);
+      formResult.textContent=window.froklaLocal?'Послание сохранено в этом браузере. Шарик на ёлке!':'Послание отправлено на проверку. Шарик добавлен на ёлку!';window.dispatchEvent(new Event('tree-update'));
+    } catch {formResult.textContent=window.froklaLocal?'Не удалось сохранить: хранилище недоступно или заполнено.':'Нет связи с сервером. Послание не отправлено.'}
+    finally{button.disabled=false;}
   });
 })();
